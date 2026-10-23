@@ -40,6 +40,8 @@ export function ResizeTerminal(arg1:number,arg2:number):Promise<void>;
 
 export function ResolveRepo(arg1:string):Promise<string>;
 
+export function RevertToBase(arg1:main.Scope,arg2:Array<string>):Promise<main.RevertResult>;
+
 export function RunCommand(arg1:string,arg2:string):Promise<main.RunResult>;
 
 export function Stamps(arg1:string,arg2:Array<string>):Promise<Record<string, string>>;

@@ -339,3 +339,43 @@ func splitLines(s string) []string {
 	}
 	return lines
 }
+
+// RevertResult says which files went back to the base and which were left alone.
+type RevertResult struct {
+	Reverted []string `json:"reverted"`
+	Skipped  []string `json:"skipped"`
+}
+
+// RevertToBase restores the selected working-tree files to their merge-base
+// version, which discards their local edits. Added, untracked and renamed files
+// have no base version to restore, so they are skipped and reported.
+func RevertToBase(s Scope, paths []string) (RevertResult, error) {
+	result := RevertResult{Reverted: []string{}, Skipped: []string{}}
+	if s.Commit != "" {
+		return result, fmt.Errorf("Revert works on the working tree only. Switch the scope to Working tree first.")
+	}
+	mb, err := MergeBase(s.Repo, s.Base)
+	if err != nil {
+		return result, err
+	}
+	changes, err := ChangedFiles(s)
+	if err != nil {
+		return result, err
+	}
+	byPath := map[string]FileChange{}
+	for _, c := range changes {
+		byPath[c.Path] = c
+	}
+	for _, path := range paths {
+		c, ok := byPath[path]
+		if !ok || c.Status == "A" || c.Status == "U" || c.Status == "R" {
+			result.Skipped = append(result.Skipped, path)
+			continue
+		}
+		if _, err := runGit(s.Repo, "checkout", mb, "--", path); err != nil {
+			return result, err
+		}
+		result.Reverted = append(result.Reverted, path)
+	}
+	return result, nil
+}

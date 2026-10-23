@@ -1052,6 +1052,56 @@ input {
     text-align: center;
 }
 
+/* Right-click menu for tree files */
+.ctx-scrim {
+    position: fixed;
+    inset: 0;
+    z-index: 9;
+}
+
+.ctx-menu {
+    position: fixed;
+    min-width: 200px;
+    margin: 0;
+    padding: 4px;
+    list-style: none;
+    background: var(--bg-alt);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+}
+
+.ctx-menu button {
+    display: block;
+    width: 100%;
+    padding: 5px 10px;
+    background: none;
+    border: 0;
+    border-radius: var(--radius);
+    color: inherit;
+    font: inherit;
+    font-size: 13px;
+    text-align: left;
+    cursor: pointer;
+}
+
+.ctx-menu button:hover,
+.ctx-menu button:focus-visible {
+    background: var(--bg-hover);
+    outline: none;
+}
+
+.ctx-menu button.ctx-danger {
+    color: var(--del);
+    font-weight: 600;
+}
+
+.ctx-sep {
+    height: 1px;
+    margin: 4px 0;
+    background: var(--border);
+}
+
 .shortcuts {
     width: min(460px, 92vw);
     max-height: 72vh;

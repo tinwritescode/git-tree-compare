@@ -286,6 +286,20 @@ export namespace main {
 	    }
 	}
 	
+	export class RevertResult {
+	    reverted: string[];
+	    skipped: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new RevertResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.reverted = source["reverted"];
+	        this.skipped = source["skipped"];
+	    }
+	}
 	export class RunResult {
 	    output: string;
 	    exitCode: number;

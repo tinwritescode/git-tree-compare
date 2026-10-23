@@ -78,6 +78,10 @@ export function ResolveRepo(arg1) {
   return window['go']['main']['App']['ResolveRepo'](arg1);
 }
 
+export function RevertToBase(arg1, arg2) {
+  return window['go']['main']['App']['RevertToBase'](arg1, arg2);
+}
+
 export function RunCommand(arg1, arg2) {
   return window['go']['main']['App']['RunCommand'](arg1, arg2);
 }

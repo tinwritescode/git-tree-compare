@@ -17,6 +17,7 @@ import {
     Refs,
     CheckUpdate,
     ResolveRepo,
+    RevertToBase,
     Stamps,
     SyncReviewed,
     TakePendingRepo,
@@ -24,7 +25,7 @@ import {
 } from '../wailsjs/go/main/App';
 import {BrowserOpenURL, EventsOn} from '../wailsjs/runtime/runtime';
 import {parseDiff, toSplitRows, Line, SplitRow} from './diff';
-import {CommandPanel, CommentBody, CommentsPanel, PRBanner, PRDiscussion, PRThread, PRView, QuickOpen, UpdateBanner} from './panels';
+import {CommandPanel, CommentBody, CommentsPanel, FileMenu, PRBanner, PRDiscussion, PRThread, PRView, QuickOpen, UpdateBanner} from './panels';
 import {buildTree, FileChange, SortMode, TreeNode} from './tree';
 import type {main} from '../wailsjs/go/models';
 import {basename, buildMarkdown} from './util';
@@ -74,6 +75,7 @@ function App() {
     const [termStarted, setTermStarted] = useState(false); // the shell starts the first time the dock opens
     const [picked, setPicked] = useState<string[]>([]); // multi-selection, in tree order; empty means just `selected`
     const pickedSet = useMemo(() => new Set(picked), [picked]);
+    const [menu, setMenu] = useState<{x: number; y: number; path: string} | null>(null);
     const [base, setBase] = useState(() => readStore('git-tree-compare:last', {base: ''}).base);
     const [commit, setCommit] = useState(''); // '' means the working tree
     const [commits, setCommits] = useState<CommitItem[]>([]);
@@ -144,6 +146,9 @@ function App() {
         [discussion, selected],
     );
     const reviewedCount = changes.filter(c => reviewed[c.path]).length;
+    // The menu acts on the whole selection when the right-clicked file is part of it.
+    const menuPaths = menu ? (pickedSet.has(menu.path) ? picked : [menu.path]) : [];
+    const menuAllReviewed = menuPaths.length > 0 && menuPaths.every(p => reviewed[p]);
     const totals = useMemo(() => sumChanges(changes), [changes]);
     const currentWorktree = worktrees.find(w => w.path === repo);
     const newPrCommits = !!pr && prSeen !== '' && pr.headRefOid !== prSeen;
@@ -638,11 +643,48 @@ function App() {
     }
 
     async function openZed() {
-        if (!selected) return;
+        if (selected) await openInZed(selected.path);
+    }
+
+    async function openInZed(path: string) {
         try {
-            await OpenInZed(repo, selected.path);
+            await OpenInZed(repo, path);
         } catch (e) {
             setError(`Could not open Zed: ${e}`);
+        }
+    }
+
+    // Right-click on a file: select it unless it is already in the selection, then open the menu.
+    function openFileMenu(file: FileChange, e: ReactMouseEvent) {
+        e.preventDefault();
+        if (!pickedSet.has(file.path)) {
+            setPicked([]);
+            setSelected(file);
+        }
+        setMenu({x: e.clientX, y: e.clientY, path: file.path});
+    }
+
+    // Restores the menu's files to the base. Local edits in them are lost, so the menu asks first.
+    async function revertMenuPaths() {
+        try {
+            const result = await RevertToBase(scope, menuPaths);
+            setPicked([]);
+            setReloadKey(k => k + 1);
+            const parts = [`Reverted ${result.reverted.length} file${result.reverted.length === 1 ? '' : 's'}.`];
+            if (result.skipped.length) parts.push(`Skipped ${result.skipped.length} added, untracked or renamed.`);
+            showFlash(parts.join(' '));
+        } catch (e) {
+            setError(`Could not revert: ${e}`);
+        }
+    }
+
+    async function copyMenuPaths() {
+        const text = menuPaths.join('\n');
+        try {
+            await navigator.clipboard.writeText(text);
+            showFlash(menuPaths.length > 1 ? `Copied ${menuPaths.length} paths.` : 'Copied path.');
+        } catch {
+            setError('Could not copy to the clipboard.');
         }
     }
 
@@ -799,6 +841,21 @@ function App() {
 
             {helpOpen && <ShortcutsSheet onClose={() => setHelpOpen(false)}/>}
 
+            {menu && (
+                <FileMenu
+                    x={menu.x}
+                    y={menu.y}
+                    paths={menuPaths}
+                    reviewable={inWorkingTree}
+                    allReviewed={menuAllReviewed}
+                    onOpenZed={openInZed}
+                    onCopyPaths={copyMenuPaths}
+                    onToggleReviewed={() => setReviewedMany(menuPaths)}
+                    onRevert={revertMenuPaths}
+                    onClose={() => setMenu(null)}
+                />
+            )}
+
             {history && <HistoryPanel items={history} onPick={restore} onClose={() => setHistory(null)}/>}
 
             {quickOpen && (
@@ -879,6 +936,7 @@ function App() {
                             onToggle={toggleFolder}
                             onToggleReviewed={toggleReviewed}
                             onPick={pickFile}
+                            onContextMenu={openFileMenu}
                         />
                     )}
                 </aside>
@@ -974,6 +1032,7 @@ type TreeProps = {
     onToggle: (path: string) => void;
     onToggleReviewed: (path: string) => void;
     onPick: (file: FileChange, e: ReactMouseEvent) => void;
+    onContextMenu: (file: FileChange, e: ReactMouseEvent) => void;
 };
 
 function TreeList(props: TreeProps & {nodes: TreeNode[]; depth?: number}) {
@@ -997,7 +1056,7 @@ function TreeItem(props: TreeProps & {node: TreeNode; depth: number}) {
             .filter(Boolean).join(' ');
         return (
             <li>
-                <div className={classes} style={indent} onClick={e => rest.onPick(file, e)} aria-selected={active}>
+                <div className={classes} style={indent} onClick={e => rest.onPick(file, e)} onContextMenu={e => rest.onContextMenu(file, e)} aria-selected={active}>
                     <input
                         type="checkbox"
                         className="review"
@@ -1042,6 +1101,7 @@ function TreeItem(props: TreeProps & {node: TreeNode; depth: number}) {
                     onToggle={rest.onToggle}
                     onToggleReviewed={rest.onToggleReviewed}
                     onPick={rest.onPick}
+                    onContextMenu={rest.onContextMenu}
                 />
             )}
         </li>
