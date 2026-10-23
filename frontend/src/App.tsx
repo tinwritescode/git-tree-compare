@@ -89,6 +89,7 @@ function App() {
     const [filter, setFilter] = useState('');
     const [sort, setSort] = useState<SortMode>(() => readStore<SortMode>('git-tree-compare:sort', 'name'));
     const [split, setSplit] = useState(() => readStore('git-tree-compare:split', false));
+    const [fullFile, setFullFile] = useState(() => readStore('git-tree-compare:fullFile', false));
     const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
     const [reviewed, setReviewed] = useState<Record<string, string>>({});
     const [notes, setNotes] = useState<Record<string, string>>({});
@@ -406,6 +407,7 @@ function App() {
 
     useEffect(() => writeStore('git-tree-compare:sort', sort), [sort]);
     useEffect(() => writeStore('git-tree-compare:split', split), [split]);
+    useEffect(() => writeStore('git-tree-compare:fullFile', fullFile), [fullFile]);
     useEffect(() => writeStore('git-tree-compare:ignoreWS', ignoreWS), [ignoreWS]);
 
     useEffect(() => {
@@ -416,14 +418,14 @@ function App() {
         let cancelled = false;
         hunk.current = -1;
         setNoteOpen(false);
-        Diff(scope, selected.path)
+        Diff({...scope, fullFile}, selected.path)
             .then(text => !cancelled && setDiff(text))
             .catch(e => !cancelled && setError(String(e)));
         if (inWorkingTree) RecordHistory(repo, base, selected.path).catch(() => {});
         return () => {
             cancelled = true;
         };
-    }, [selected, repo, base, commit, ignoreWS]);
+    }, [selected, repo, base, commit, ignoreWS, fullFile]);
 
     // Keyboard: move between files, filter, quick open, run, open in Zed,
     // refresh, review, notes, whitespace, split, hunks.
@@ -987,6 +989,8 @@ function App() {
                             onToggleNote={() => setNoteOpen(v => !v)}
                             onNote={text => updateNote(selected.path, text)}
                             onToggleSplit={() => setSplit(s => !s)}
+                            fullFile={fullFile}
+                            onToggleFullFile={() => setFullFile(v => !v)}
                             onOpenZed={openZed}
                             threads={fileThreads}
                             onOpenURL={BrowserOpenURL}
@@ -1136,6 +1140,8 @@ function DiffPanel(props: {
     onToggleNote: () => void;
     onNote: (text: string) => void;
     onToggleSplit: () => void;
+    fullFile: boolean;
+    onToggleFullFile: () => void;
     onOpenZed: () => void;
     threads: PRThread[];
     onOpenURL: (url: string) => void;
@@ -1164,6 +1170,14 @@ function DiffPanel(props: {
                 <button className="btn" onClick={props.onToggleNote} title="Note (n)">{noteOpen ? 'Hide note' : 'Note'}</button>
                 <button className="btn" onClick={props.onToggleSplit} title="Toggle split view (v)">
                     {split ? 'Unified' : 'Split'}
+                </button>
+                <button
+                    className="btn"
+                    aria-pressed={props.fullFile}
+                    onClick={props.onToggleFullFile}
+                    title="Show the whole file, with the changes marked, instead of only the lines around them"
+                >
+                    {props.fullFile ? 'Changes only' : 'Full file'}
                 </button>
                 <button className="btn" onClick={props.onOpenZed} disabled={file.status === 'D'} title="Open in Zed (o)">Open in Zed</button>
                 <button className="btn" onClick={copyPath}>{copied ? 'Copied' : 'Copy path'}</button>

@@ -207,7 +207,11 @@ func FileDiff(s Scope, path string) (string, error) {
 	}
 	if out == "" && s.Commit == "" {
 		if tracked, _ := runGit(s.Repo, "ls-files", "--error-unmatch", "--", path); tracked == "" {
-			return runGitAllowExit(s.Repo, "diff", "--no-index", "--", "/dev/null", path)
+			args := []string{"diff", "--no-index"}
+			if s.FullFile {
+				args = append(args, fullFileContext)
+			}
+			return runGitAllowExit(s.Repo, append(args, "--", "/dev/null", path)...)
 		}
 	}
 	return out, nil
