@@ -357,6 +357,7 @@ export namespace main {
 	    latest: string;
 	    url: string;
 	    available: boolean;
+	    installable: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new UpdateInfo(source);
@@ -368,6 +369,7 @@ export namespace main {
 	        this.latest = source["latest"];
 	        this.url = source["url"];
 	        this.available = source["available"];
+	        this.installable = source["installable"];
 	    }
 	}
 	export class Worktree {

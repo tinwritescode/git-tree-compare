@@ -9,6 +9,7 @@ import {
     ExportPatch,
     Fingerprint,
     History,
+    InstallUpdate,
     OpenInZed,
     OpenPR,
     PRComments,
@@ -98,6 +99,7 @@ function App() {
     const [commentsOpen, setCommentsOpen] = useState(false);
     const [commentsLoading, setCommentsLoading] = useState(false);
     const [update, setUpdate] = useState<main.UpdateInfo | null>(null); // a newer release, if one exists
+    const [installing, setInstalling] = useState(false);
     const [quickOpen, setQuickOpen] = useState(false);
     const [picking, setPicking] = useState(false);
     const [recent, setRecent] = useState<string[]>([]);
@@ -138,7 +140,13 @@ function App() {
     }, [discussion]);
     const unresolvedCount = Object.values(commentCounts).reduce((sum, n) => sum + n, 0);
     const updateBanner = update && (
-        <UpdateBanner update={update} onOpen={() => BrowserOpenURL(update.url)} onLater={dismissUpdate}/>
+        <UpdateBanner
+            update={update}
+            installing={installing}
+            onInstall={installUpdate}
+            onOpen={() => BrowserOpenURL(update.url)}
+            onLater={dismissUpdate}
+        />
     );
     // Review threads on the selected file, shown inline in its diff.
     const fileThreads = useMemo(
@@ -503,6 +511,17 @@ function App() {
 
     function toggleReviewed(path: string) {
         setReviewedMany([path]);
+    }
+
+    // Replaces the app with the latest release and restarts it. On success the app quits itself.
+    async function installUpdate() {
+        setInstalling(true);
+        try {
+            await InstallUpdate();
+        } catch (e) {
+            setError(`Could not install the update: ${e}`);
+            setInstalling(false);
+        }
     }
 
     // Hides the update notice until the next release.

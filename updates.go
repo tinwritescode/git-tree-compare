@@ -12,23 +12,31 @@ import (
 
 // appVersion is the version this build reports. Keep it equal to info.productVersion in wails.json,
 // which sets the bundle version on macOS.
-const appVersion = "0.2.0"
+const appVersion = "0.3.0"
 
 // updateRepo is the GitHub repository whose latest release is the newest build.
 const updateRepo = "tinwritescode/git-tree-compare"
 
 // UpdateInfo says whether a newer release exists and where to download it.
 type UpdateInfo struct {
-	Current   string `json:"current"`
-	Latest    string `json:"latest"`
-	URL       string `json:"url"`
-	Available bool   `json:"available"`
+	Current     string `json:"current"`
+	Latest      string `json:"latest"`
+	URL         string `json:"url"`
+	Available   bool   `json:"available"`
+	Installable bool   `json:"installable"` // the release has a zip and checksum to install in place
 }
 
-// ghRelease is the part of a GitHub release the update check reads.
+// ghRelease is the part of a GitHub release the update check and install read.
 type ghRelease struct {
-	TagName string `json:"tag_name"`
-	HTMLURL string `json:"html_url"`
+	TagName string    `json:"tag_name"`
+	HTMLURL string    `json:"html_url"`
+	Assets  []ghAsset `json:"assets"`
+}
+
+// ghAsset is one file attached to a release.
+type ghAsset struct {
+	Name string `json:"name"`
+	URL  string `json:"browser_download_url"`
 }
 
 // CheckUpdate asks GitHub for the latest release and compares it with this build.
@@ -47,6 +55,7 @@ func checkUpdate(current string, fetch func() (ghRelease, error)) (UpdateInfo, e
 	info.Latest = strings.TrimPrefix(release.TagName, "v")
 	info.URL = release.HTMLURL
 	info.Available = isNewer(info.Latest, current)
+	_, _, _, info.Installable = releaseAssetURLs(release.Assets)
 	return info, nil
 }
 
