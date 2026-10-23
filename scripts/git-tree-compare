@@ -1,0 +1,44 @@
+#!/bin/sh
+# Open a git repository in git-tree-compare and return the prompt at once.
+# Usage: git-tree-compare [path] [--base REF]
+#   path      repository or any folder inside it (default: current directory)
+#   --base    branch or tag to compare against (default: the open PR's base, or main/staging/master)
+# Set GTC_APP to use an app bundle somewhere other than /Applications.
+
+APP="${GTC_APP:-/Applications/git-tree-compare.app}"
+
+dir="."
+base=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --base)
+            [ $# -ge 2 ] || { echo "git-tree-compare: --base needs a value" >&2; exit 1; }
+            base="$2"
+            shift 2
+            ;;
+        --base=*)
+            base="${1#--base=}"
+            shift
+            ;;
+        -*)
+            echo "git-tree-compare: unknown option: $1" >&2
+            exit 1
+            ;;
+        *)
+            dir="$1"
+            shift
+            ;;
+    esac
+done
+
+path=$(cd "$dir" 2>/dev/null && pwd -P) || {
+    echo "git-tree-compare: not a directory: $dir" >&2
+    exit 1
+}
+
+# -n starts a new process even when the app is open. That process hands the
+# path and base to the running window through the single-instance lock and exits.
+if [ -n "$base" ]; then
+    exec open -n -a "$APP" --args "$path" --base "$base"
+fi
+exec open -n -a "$APP" --args "$path"
