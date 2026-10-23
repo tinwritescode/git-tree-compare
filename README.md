@@ -5,7 +5,7 @@ It is the preview of your pull request, without leaving your machine.
 
 Created by **Tin Nguyen**.
 
-![git-tree-compare showing a pull request's changed files and diff](docs/main.png)
+![git-tree-compare showing changed files and the diff for one file](docs/review.png)
 
 ## Features
 
