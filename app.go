@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -239,6 +240,27 @@ func (a *App) RecordHistory(repo, base, file string) error {
 // RevertToBase restores the given files to the base version. See RevertToBase in git.go.
 func (a *App) RevertToBase(s Scope, paths []string) (RevertResult, error) {
 	return RevertToBase(s, paths)
+}
+
+// InstallUpdate downloads the latest release, replaces this app with it, and relaunches.
+// The app quits on success, so the caller gets an error only when nothing was changed.
+func (a *App) InstallUpdate() error {
+	appPath, err := appBundlePath()
+	if err != nil {
+		return err
+	}
+	release, err := fetchLatestRelease()
+	if err != nil {
+		return err
+	}
+	if err := installRelease(release, appPath); err != nil {
+		return err
+	}
+	if err := relaunchAfterQuit(appPath); err != nil {
+		return fmt.Errorf("the update is installed, but the app could not restart: %w", err)
+	}
+	runtime.Quit(a.ctx)
+	return nil
 }
 
 // OpenInZed opens a file of the repository in the Zed editor.

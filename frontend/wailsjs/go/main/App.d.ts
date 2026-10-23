@@ -22,6 +22,8 @@ export function History():Promise<Array<main.HistoryEntry>>;
 
 export function HomeDir():Promise<string>;
 
+export function InstallUpdate():Promise<void>;
+
 export function ListDir(arg1:string):Promise<main.DirListing>;
 
 export function OpenInZed(arg1:string,arg2:string):Promise<void>;

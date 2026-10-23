@@ -42,6 +42,10 @@ export function HomeDir() {
   return window['go']['main']['App']['HomeDir']();
 }
 
+export function InstallUpdate() {
+  return window['go']['main']['App']['InstallUpdate']();
+}
+
 export function ListDir(arg1) {
   return window['go']['main']['App']['ListDir'](arg1);
 }

@@ -133,9 +133,12 @@ export function CommandPanel({repo, paths, onClose}: {
     );
 }
 
-// UpdateBanner offers a newer release. Download opens its GitHub page; Later hides it until the next release.
-export function UpdateBanner({update, onOpen, onLater}: {
+// UpdateBanner offers a newer release. Install and restart replaces the app in place when the release
+// has a checksummed build; otherwise Download opens its GitHub page. Later hides it until the next release.
+export function UpdateBanner({update, installing, onInstall, onOpen, onLater}: {
     update: main.UpdateInfo;
+    installing: boolean;
+    onInstall: () => void;
     onOpen: () => void;
     onLater: () => void;
 }) {
@@ -143,8 +146,17 @@ export function UpdateBanner({update, onOpen, onLater}: {
         <div className="pr update" role="status">
             <span className="pr-title">Version {update.latest} is out. You have {update.current}.</span>
             <span className="spacer"/>
-            <button className="btn" onClick={onOpen}>Download</button>
-            <button className="btn" onClick={onLater}>Later</button>
+            {update.installable ? (
+                <>
+                    <button className="btn" onClick={onOpen} disabled={installing}>Release notes</button>
+                    <button className="btn" onClick={onInstall} disabled={installing}>
+                        {installing ? 'Installing...' : 'Install and restart'}
+                    </button>
+                </>
+            ) : (
+                <button className="btn" onClick={onOpen}>Download</button>
+            )}
+            <button className="btn" onClick={onLater} disabled={installing}>Later</button>
         </div>
     );
 }
