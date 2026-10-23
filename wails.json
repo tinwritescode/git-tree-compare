@@ -9,5 +9,8 @@
   "author": {
     "name": "Tin Nguyen",
     "email": "tin@secondtalent.com"
+  },
+  "info": {
+    "productVersion": "0.1.0"
   }
 }
