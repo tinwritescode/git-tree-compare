@@ -8,7 +8,11 @@ type Scope struct {
 	Base     string `json:"base"`
 	Commit   string `json:"commit"`
 	IgnoreWS bool   `json:"ignoreWS"`
+	FullFile bool   `json:"fullFile,omitempty"` // show the whole file as context, not just the changed hunks
 }
+
+// fullFileContext asks git for more context lines than any file has, so each diff holds the whole file.
+const fullFileContext = "-U1000000"
 
 // diffArgs builds the git command for a diff within scope. flags are extra
 // options such as --name-status. path limits the output to one file when set.
@@ -25,6 +29,9 @@ func diffArgs(s Scope, mb string, flags []string, path string) []string {
 	args = append(args, flags...)
 	if s.IgnoreWS {
 		args = append(args, "-w")
+	}
+	if s.FullFile {
+		args = append(args, fullFileContext)
 	}
 	args = append(args, target)
 	if path != "" {

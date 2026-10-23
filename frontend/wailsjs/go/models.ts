@@ -321,6 +321,7 @@ export namespace main {
 	    base: string;
 	    commit: string;
 	    ignoreWS: boolean;
+	    fullFile?: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new Scope(source);
@@ -332,6 +333,7 @@ export namespace main {
 	        this.base = source["base"];
 	        this.commit = source["commit"];
 	        this.ignoreWS = source["ignoreWS"];
+	        this.fullFile = source["fullFile"];
 	    }
 	}
 	export class SyncResult {
