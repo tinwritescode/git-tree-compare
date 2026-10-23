@@ -12,7 +12,7 @@ import (
 
 // appVersion is the version this build reports. Keep it equal to info.productVersion in wails.json,
 // which sets the bundle version on macOS.
-const appVersion = "0.1.0"
+const appVersion = "0.2.0"
 
 // updateRepo is the GitHub repository whose latest release is the newest build.
 const updateRepo = "tinwritescode/git-tree-compare"
