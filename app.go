@@ -236,6 +236,11 @@ func (a *App) RecordHistory(repo, base, file string) error {
 	return saveHistory(path, recordHistory(entries, entry))
 }
 
+// RevertToBase restores the given files to the base version. See RevertToBase in git.go.
+func (a *App) RevertToBase(s Scope, paths []string) (RevertResult, error) {
+	return RevertToBase(s, paths)
+}
+
 // OpenInZed opens a file of the repository in the Zed editor.
 func (a *App) OpenInZed(repo, path string) error {
 	zed, err := findZed()

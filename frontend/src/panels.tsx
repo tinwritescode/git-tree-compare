@@ -270,3 +270,75 @@ export function CommentBody({comment}: {comment: PRComment}) {
         </div>
     );
 }
+
+export interface FileMenuProps {
+    x: number;
+    y: number;
+    paths: string[]; // the files the actions apply to
+    reviewable: boolean; // reviewed marks only exist in the working tree
+    allReviewed: boolean;
+    onOpenZed: (path: string) => void;
+    onCopyPaths: () => void;
+    onToggleReviewed: () => void;
+    onRevert: () => void;
+    onClose: () => void;
+}
+
+// FileMenu is the right-click menu for files in the tree. It acts on every file in paths.
+export function FileMenu({x, y, paths, reviewable, allReviewed, onOpenZed, onCopyPaths, onToggleReviewed, onRevert, onClose}: FileMenuProps) {
+    // Revert throws away local edits, so the first click only arms it; the second runs it.
+    const [armed, setArmed] = useState(false);
+
+    useEffect(() => {
+        const close = (e: globalThis.KeyboardEvent) => {
+            if (e.key === 'Escape') onClose();
+        };
+        window.addEventListener('keydown', close);
+        return () => window.removeEventListener('keydown', close);
+    }, [onClose]);
+
+    const single = paths.length === 1 ? paths[0] : null;
+    // Keep the menu inside the window when it opens near the right or bottom edge.
+    const left = Math.min(x, window.innerWidth - 220);
+    const top = Math.min(y, window.innerHeight - 160);
+
+    function run(action: () => void) {
+        action();
+        onClose();
+    }
+
+    return (
+        <div className="ctx-scrim" onMouseDown={onClose} onContextMenu={e => { e.preventDefault(); onClose(); }}>
+            <ul className="ctx-menu" role="menu" style={{left, top}} onMouseDown={e => e.stopPropagation()}>
+                {single && <li role="none"><button role="menuitem" onClick={() => run(() => onOpenZed(single))}>Open in Zed</button></li>}
+                <li role="none">
+                    <button role="menuitem" onClick={() => run(onCopyPaths)}>
+                        {paths.length > 1 ? `Copy ${paths.length} paths` : 'Copy path'}
+                    </button>
+                </li>
+                {reviewable && (
+                    <>
+                        <li role="separator" className="ctx-sep"/>
+                        <li role="none">
+                            <button role="menuitem" onClick={() => run(onToggleReviewed)}>
+                                {allReviewed ? 'Mark unreviewed' : paths.length > 1 ? `Mark ${paths.length} reviewed` : 'Mark reviewed'}
+                            </button>
+                        </li>
+                        <li role="none">
+                            <button
+                                role="menuitem"
+                                className={armed ? 'ctx-danger' : undefined}
+                                onClick={() => (armed ? run(onRevert) : setArmed(true))}
+                            >
+                                {armed
+                                    ? 'Click again to discard local edits'
+                                    : paths.length > 1 ? `Revert ${paths.length} to base` : 'Revert to base'}
+                            </button>
+                        </li>
+                    </>
+                )}
+            </ul>
+        </div>
+    );
+}
+
