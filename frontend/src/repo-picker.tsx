@@ -2,6 +2,7 @@ import {type KeyboardEvent, useEffect, useRef, useState} from 'react';
 import {HomeDir, ListDir} from '../wailsjs/go/main/App';
 import type {main} from '../wailsjs/go/models';
 import {basename} from './util';
+import {Button} from './ui/button';
 
 export interface RepoPickerProps {
     start: string; // folder to open first, usually the current repo's parent
@@ -82,7 +83,7 @@ export function RepoPicker({start, recent, openError, onOpen, onClose}: RepoPick
             <div className="picker" role="dialog" aria-label="Open repository" onClick={e => e.stopPropagation()} onKeyDown={onKey}>
                 <div className="picker-head">
                     <span>Open repository</span>
-                    <button className="btn icon" onClick={onClose} aria-label="Close">×</button>
+                    <Button size="icon"  onClick={onClose} aria-label="Close">×</Button>
                 </div>
 
                 <input
@@ -111,13 +112,13 @@ export function RepoPicker({start, recent, openError, onOpen, onClose}: RepoPick
                 )}
 
                 <div className="picker-toolbar">
-                    <button className="btn" onClick={() => listing?.parent && go(listing.parent)} disabled={!listing?.parent}>
+                    <Button onClick={() => listing?.parent && go(listing.parent)} disabled={!listing?.parent}>
                         ↑ Up
-                    </button>
+                    </Button>
                     <span className="picker-here" title={listing?.path}>{listing?.path ?? ''}</span>
-                    <button className="btn" onClick={() => listing && onOpen(listing.path)} disabled={!listing?.isRepo}>
+                    <Button onClick={() => listing && onOpen(listing.path)} disabled={!listing?.isRepo}>
                         {listing?.isRepo ? 'Open this repo' : 'Not a repo'}
-                    </button>
+                    </Button>
                 </div>
 
                 {(error || openError) && <div className="error" role="alert">{error || openError}</div>}

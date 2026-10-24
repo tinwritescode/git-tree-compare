@@ -14,6 +14,8 @@ export function DetectBase(arg1:string):Promise<main.PRBase>;
 
 export function Diff(arg1:main.Scope,arg2:string):Promise<string>;
 
+export function DiffAnchor(arg1:string):Promise<string>;
+
 export function ExportPatch(arg1:main.Scope):Promise<string>;
 
 export function Fingerprint(arg1:string,arg2:string):Promise<string>;
@@ -24,15 +26,21 @@ export function HomeDir():Promise<string>;
 
 export function InstallUpdate():Promise<void>;
 
+export function InstalledEditors():Promise<Array<main.Editor>>;
+
 export function ListDir(arg1:string):Promise<main.DirListing>;
 
-export function OpenInZed(arg1:string,arg2:string):Promise<void>;
+export function ListFiles(arg1:string):Promise<Array<string>>;
+
+export function OpenInEditor(arg1:string,arg2:string,arg3:string):Promise<void>;
 
 export function OpenPR(arg1:string):Promise<void>;
 
 export function PRComments(arg1:string):Promise<main.PRDiscussion>;
 
 export function PRStatus(arg1:string):Promise<main.PRInfo>;
+
+export function ReadFile(arg1:string,arg2:string):Promise<string>;
 
 export function RecordHistory(arg1:string,arg2:string,arg3:string):Promise<void>;
 
@@ -57,5 +65,7 @@ export function SyncReviewed(arg1:string,arg2:Array<string>):Promise<main.SyncRe
 export function TakePendingRepo():Promise<main.OpenRequest>;
 
 export function Worktrees(arg1:string):Promise<Array<main.Worktree>>;
+
+export function WriteFile(arg1:string,arg2:string,arg3:string):Promise<void>;
 
 export function WriteTerminal(arg1:string):Promise<void>;

@@ -72,6 +72,22 @@ export namespace main {
 		    return a;
 		}
 	}
+	export class Editor {
+	    id: string;
+	    name: string;
+	    app: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Editor(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.app = source["app"];
+	    }
+	}
 	export class FileChange {
 	    path: string;
 	    oldPath?: string;

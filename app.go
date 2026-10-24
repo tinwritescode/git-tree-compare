@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sync"
 	"time"
@@ -263,13 +262,35 @@ func (a *App) InstallUpdate() error {
 	return nil
 }
 
-// OpenInZed opens a file of the repository in the Zed editor.
-func (a *App) OpenInZed(repo, path string) error {
-	zed, err := findZed()
-	if err != nil {
-		return err
-	}
-	return exec.Command(zed, filepath.Join(repo, path)).Start()
+// ListFiles returns every file in the repository that is not ignored, for the file finder.
+func (a *App) ListFiles(repo string) ([]string, error) {
+	list, err := ListFiles(repo)
+	return orEmpty(list), err
+}
+
+// ReadFile returns the text of a repository file for the editor.
+func (a *App) ReadFile(repo, path string) (string, error) {
+	return ReadFile(repo, path)
+}
+
+// WriteFile saves the text of an existing repository file.
+func (a *App) WriteFile(repo, path, content string) error {
+	return WriteFile(repo, path, content)
+}
+
+// DiffAnchor returns the GitHub anchor for a file on a pull request's Files tab.
+func (a *App) DiffAnchor(path string) string {
+	return DiffAnchor(path)
+}
+
+// InstalledEditors returns the editors on this machine that the app can open files in.
+func (a *App) InstalledEditors() []Editor {
+	return orEmpty(InstalledEditors())
+}
+
+// OpenInEditor opens a file of the repository in the editor with the given ID.
+func (a *App) OpenInEditor(repo, path, editor string) error {
+	return OpenInEditor(repo, path, editor)
 }
 
 // orEmpty turns a nil slice into an empty one. Go sends nil as null, and the
@@ -279,18 +300,4 @@ func orEmpty[T any](items []T) []T {
 		return []T{}
 	}
 	return items
-}
-
-// findZed looks for the zed CLI on PATH, then in its usual install locations.
-// A GUI app started from Finder often has a short PATH.
-func findZed() (string, error) {
-	if p, err := exec.LookPath("zed"); err == nil {
-		return p, nil
-	}
-	for _, p := range []string{"/usr/local/bin/zed", "/opt/homebrew/bin/zed"} {
-		if _, err := os.Stat(p); err == nil {
-			return p, nil
-		}
-	}
-	return "", os.ErrNotExist
 }

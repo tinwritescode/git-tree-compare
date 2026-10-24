@@ -26,6 +26,10 @@ export function Diff(arg1, arg2) {
   return window['go']['main']['App']['Diff'](arg1, arg2);
 }
 
+export function DiffAnchor(arg1) {
+  return window['go']['main']['App']['DiffAnchor'](arg1);
+}
+
 export function ExportPatch(arg1) {
   return window['go']['main']['App']['ExportPatch'](arg1);
 }
@@ -46,12 +50,20 @@ export function InstallUpdate() {
   return window['go']['main']['App']['InstallUpdate']();
 }
 
+export function InstalledEditors() {
+  return window['go']['main']['App']['InstalledEditors']();
+}
+
 export function ListDir(arg1) {
   return window['go']['main']['App']['ListDir'](arg1);
 }
 
-export function OpenInZed(arg1, arg2) {
-  return window['go']['main']['App']['OpenInZed'](arg1, arg2);
+export function ListFiles(arg1) {
+  return window['go']['main']['App']['ListFiles'](arg1);
+}
+
+export function OpenInEditor(arg1, arg2, arg3) {
+  return window['go']['main']['App']['OpenInEditor'](arg1, arg2, arg3);
 }
 
 export function OpenPR(arg1) {
@@ -64,6 +76,10 @@ export function PRComments(arg1) {
 
 export function PRStatus(arg1) {
   return window['go']['main']['App']['PRStatus'](arg1);
+}
+
+export function ReadFile(arg1, arg2) {
+  return window['go']['main']['App']['ReadFile'](arg1, arg2);
 }
 
 export function RecordHistory(arg1, arg2, arg3) {
@@ -112,6 +128,10 @@ export function TakePendingRepo() {
 
 export function Worktrees(arg1) {
   return window['go']['main']['App']['Worktrees'](arg1);
+}
+
+export function WriteFile(arg1, arg2, arg3) {
+  return window['go']['main']['App']['WriteFile'](arg1, arg2, arg3);
 }
 
 export function WriteTerminal(arg1) {

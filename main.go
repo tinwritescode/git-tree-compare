@@ -8,6 +8,7 @@ import (
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
+	"github.com/wailsapp/wails/v2/pkg/options/mac"
 )
 
 //go:embed all:frontend/dist
@@ -25,6 +26,12 @@ func main() {
 		Title:  "git-tree-compare",
 		Width:  1024,
 		Height: 768,
+		// Start filling the screen. The title bar is hidden; the toolbar takes its place
+		// and the traffic-light buttons float over it.
+		WindowStartState: options.Maximised,
+		Mac: &mac.Options{
+			TitleBar: mac.TitleBarHiddenInset(),
+		},
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},

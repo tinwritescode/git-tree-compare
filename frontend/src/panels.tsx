@@ -1,26 +1,29 @@
 import {type KeyboardEvent, useEffect, useMemo, useRef, useState} from 'react';
 import type {main} from '../wailsjs/go/models';
 import {RunCommand} from '../wailsjs/go/main/App';
-import {FileChange} from './tree';
 import {fuzzyScore, shellQuote} from './util';
+import {Button} from './ui/button';
+import {Kbd} from './ui/kbd';
 
-// QuickOpen jumps to any changed file by typing part of its path.
-export function QuickOpen({files, onPick, onClose}: {
-    files: FileChange[];
-    onPick: (file: FileChange) => void;
+// QuickOpen jumps to any file in the repository by typing part of its path.
+// Changed files carry their status and are listed first when the query is empty.
+export function QuickOpen({paths, changed, onPick, onClose}: {
+    paths: string[];
+    changed: Map<string, string>;
+    onPick: (path: string) => void;
     onClose: () => void;
 }) {
     const [query, setQuery] = useState('');
     const [index, setIndex] = useState(0);
 
     const matches = useMemo(() => {
-        return files
-            .map(f => ({f, score: fuzzyScore(query, f.path)}))
+        return paths
+            .map(path => ({path, score: fuzzyScore(query, path), changed: changed.has(path)}))
             .filter(m => m.score >= 0)
-            .sort((a, b) => a.score - b.score)
-            .map(m => m.f)
+            .sort((a, b) => a.score - b.score || Number(b.changed) - Number(a.changed))
+            .map(m => m.path)
             .slice(0, 50);
-    }, [files, query]);
+    }, [paths, changed, query]);
 
     function onKey(e: KeyboardEvent) {
         if (e.key === 'Escape') onClose();
@@ -43,17 +46,20 @@ export function QuickOpen({files, onPick, onClose}: {
                     onKeyDown={onKey}
                 />
                 <ul>
-                    {matches.map((f, i) => (
-                        <li
-                            key={f.path}
-                            className={i === index ? 'active' : ''}
-                            onMouseEnter={() => setIndex(i)}
-                            onClick={() => onPick(f)}
-                        >
-                            <span className={`status status-${f.status}`}>{f.status}</span>
-                            <span>{f.path}</span>
-                        </li>
-                    ))}
+                    {matches.map((path, i) => {
+                        const status = changed.get(path);
+                        return (
+                            <li
+                                key={path}
+                                className={i === index ? 'active' : ''}
+                                onMouseEnter={() => setIndex(i)}
+                                onClick={() => onPick(path)}
+                            >
+                                <span className={`status status-${status ?? ''}`}>{status ?? ''}</span>
+                                <span>{path}</span>
+                            </li>
+                        );
+                    })}
                     {matches.length === 0 && <li className="none">No matching file</li>}
                 </ul>
             </div>
@@ -122,10 +128,10 @@ export function CommandPanel({repo, paths, onClose}: {
                         if (e.key === 'Escape') onClose();
                     }}
                 />
-                <button className="btn" onClick={run} disabled={running || !command.trim()}>
+                <Button onClick={run} disabled={running || !command.trim()}>
                     {running ? 'Running…' : 'Run'}
-                </button>
-                <button className="btn icon" onClick={onClose} aria-label="Close">×</button>
+                </Button>
+                <Button size="icon"  onClick={onClose} aria-label="Close">×</Button>
             </div>
             {status && <div className="cmd-status">{status}</div>}
             {output && <pre className="cmd-output">{output}</pre>}
@@ -148,15 +154,15 @@ export function UpdateBanner({update, installing, onInstall, onOpen, onLater}: {
             <span className="spacer"/>
             {update.installable ? (
                 <>
-                    <button className="btn" onClick={onOpen} disabled={installing}>Release notes</button>
-                    <button className="btn" onClick={onInstall} disabled={installing}>
+                    <Button onClick={onOpen} disabled={installing}>Release notes</Button>
+                    <Button onClick={onInstall} disabled={installing}>
                         {installing ? 'Installing...' : 'Install and restart'}
-                    </button>
+                    </Button>
                 </>
             ) : (
-                <button className="btn" onClick={onOpen}>Download</button>
+                <Button onClick={onOpen}>Download</Button>
             )}
-            <button className="btn" onClick={onLater} disabled={installing}>Later</button>
+            <Button onClick={onLater} disabled={installing}>Later</Button>
         </div>
     );
 }
@@ -182,16 +188,16 @@ export function PRBanner({pr, newCommits, unresolved, onOpen, onSeen, onSync, on
             {pr.mergeable === 'CONFLICTING' && <span className="pr-flag bad">GitHub: conflicts</span>}
             {newCommits && <span className="pr-flag new">new commits since you last looked</span>}
             <span className="spacer"/>
-            {newCommits && <button className="btn" onClick={onSeen}>Mark seen</button>}
-            <button className="btn" onClick={onComments} title="Review comments on GitHub">
+            {newCommits && <Button onClick={onSeen}>Mark seen</Button>}
+            <Button onClick={onComments} title="Review comments on GitHub">
                 Comments{unresolved > 0 ? ` (${unresolved} open)` : ''}
-            </button>
+            </Button>
             {onSync && (
-                <button className="btn" onClick={onSync} title="Mark your reviewed files as viewed on GitHub">
+                <Button onClick={onSync} title="Mark your reviewed files as viewed on GitHub">
                     Sync reviewed
-                </button>
+                </Button>
             )}
-            <button className="btn" onClick={onOpen}>Open PR</button>
+            <Button onClick={onOpen}>Open PR</Button>
         </div>
     );
 }
@@ -222,10 +228,10 @@ export function CommentsPanel({discussion, loading, onOpenFile, onOpenURL, onRef
                     {discussion ? `PR #${discussion.number} comments` : 'PR comments'}
                 </span>
                 <span className="spacer"/>
-                <button className="btn" onClick={onRefresh} disabled={loading}>
+                <Button onClick={onRefresh} disabled={loading}>
                     {loading ? 'Loading…' : 'Refresh'}
-                </button>
-                <button className="btn icon" onClick={onClose} aria-label="Close">×</button>
+                </Button>
+                <Button size="icon"  onClick={onClose} aria-label="Close">×</Button>
             </div>
 
             {discussion && total === 0 && !loading && (
@@ -242,7 +248,7 @@ export function CommentsPanel({discussion, loading, onOpenFile, onOpenURL, onRef
                                 {t.resolved && <span className="cmt-tag">resolved</span>}
                                 {t.outdated && <span className="cmt-tag">outdated</span>}
                                 <span className="spacer"/>
-                                {t.url && <button className="btn link" onClick={() => onOpenURL(t.url)}>Open on GitHub</button>}
+                                {t.url && <Button variant="link"  onClick={() => onOpenURL(t.url)}>Open on GitHub</Button>}
                             </div>
                             {t.comments.map((c, j) => (
                                 <CommentBody key={j} comment={c}/>
@@ -259,7 +265,7 @@ export function CommentsPanel({discussion, loading, onOpenFile, onOpenURL, onRef
                         <div className="cmt-thread" key={`${c.url}-${i}`}>
                             <div className="cmt-meta">
                                 <span className="spacer"/>
-                                {c.url && <button className="btn link" onClick={() => onOpenURL(c.url)}>Open on GitHub</button>}
+                                {c.url && <Button variant="link"  onClick={() => onOpenURL(c.url)}>Open on GitHub</Button>}
                             </div>
                             <CommentBody comment={c}/>
                         </div>
@@ -289,7 +295,7 @@ export interface FileMenuProps {
     paths: string[]; // the files the actions apply to
     reviewable: boolean; // reviewed marks only exist in the working tree
     allReviewed: boolean;
-    onOpenZed: (path: string) => void;
+    onOpenInEditor: (path: string) => void;
     onCopyPaths: () => void;
     onToggleReviewed: () => void;
     onRevert: () => void;
@@ -297,7 +303,7 @@ export interface FileMenuProps {
 }
 
 // FileMenu is the right-click menu for files in the tree. It acts on every file in paths.
-export function FileMenu({x, y, paths, reviewable, allReviewed, onOpenZed, onCopyPaths, onToggleReviewed, onRevert, onClose}: FileMenuProps) {
+export function FileMenu({x, y, paths, reviewable, allReviewed, onOpenInEditor, onCopyPaths, onToggleReviewed, onRevert, onClose}: FileMenuProps) {
     // Revert throws away local edits, so the first click only arms it; the second runs it.
     const [armed, setArmed] = useState(false);
 
@@ -322,7 +328,7 @@ export function FileMenu({x, y, paths, reviewable, allReviewed, onOpenZed, onCop
     return (
         <div className="ctx-scrim" onMouseDown={onClose} onContextMenu={e => { e.preventDefault(); onClose(); }}>
             <ul className="ctx-menu" role="menu" style={{left, top}} onMouseDown={e => e.stopPropagation()}>
-                {single && <li role="none"><button role="menuitem" onClick={() => run(() => onOpenZed(single))}>Open in Zed</button></li>}
+                {single && <li role="none"><button role="menuitem" onClick={() => run(() => onOpenInEditor(single))}>Open in editor</button></li>}
                 <li role="none">
                     <button role="menuitem" onClick={() => run(onCopyPaths)}>
                         {paths.length > 1 ? `Copy ${paths.length} paths` : 'Copy path'}

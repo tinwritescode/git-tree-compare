@@ -9,8 +9,11 @@ import {
     ExportPatch,
     Fingerprint,
     History,
+    DiffAnchor,
     InstallUpdate,
-    OpenInZed,
+    ListFiles,
+    InstalledEditors,
+    OpenInEditor,
     OpenPR,
     PRComments,
     PRStatus,
@@ -26,10 +29,16 @@ import {
 } from '../wailsjs/go/main/App';
 import {BrowserOpenURL, EventsOn} from '../wailsjs/runtime/runtime';
 import {parseDiff, toSplitRows, Line, SplitRow} from './diff';
+import {EditorPanel} from './editor';
+import {EditorMenu} from './editor-menu';
 import {CommandPanel, CommentBody, CommentsPanel, FileMenu, PRBanner, PRDiscussion, PRThread, PRView, QuickOpen, UpdateBanner} from './panels';
 import {buildTree, FileChange, SortMode, TreeNode} from './tree';
 import type {main} from '../wailsjs/go/models';
 import {basename, buildMarkdown} from './util';
+import {Button} from './ui/button';
+import {Kbd} from './ui/kbd';
+import {Select} from './ui/select';
+import {Combobox} from './ui/combobox';
 import {RepoPicker} from './repo-picker';
 import {Landing} from './landing';
 import {TerminalPanel} from './terminal';
@@ -95,6 +104,9 @@ function App() {
     const [notes, setNotes] = useState<Record<string, string>>({});
     const [noteOpen, setNoteOpen] = useState(false);
     const [pr, setPr] = useState<PRView | null>(null);
+    const [prFileURL, setPrFileURL] = useState(''); // this file's diff on the open pull request
+    const [editors, setEditors] = useState<main.Editor[]>([]); // editors installed on this machine
+    const [editorID, setEditorID] = useState(() => readStore('git-tree-compare:editor', ''));
     const [prSeen, setPrSeen] = useState('');
     const [discussion, setDiscussion] = useState<PRDiscussion | null>(null); // review comments on the open PR
     const [commentsOpen, setCommentsOpen] = useState(false);
@@ -106,6 +118,8 @@ function App() {
     const [recent, setRecent] = useState<string[]>([]);
     const [pickError, setPickError] = useState('');
     const [cmdOpen, setCmdOpen] = useState(false);
+    const [repoFiles, setRepoFiles] = useState<string[]>([]); // every file the finder can open
+    const [editPath, setEditPath] = useState<string | null>(null); // file open in the editor, if any
     const [history, setHistory] = useState<HistoryItem[] | null>(null);
     const [loading, setLoading] = useState(false);
     const [reloadKey, setReloadKey] = useState(0);
@@ -130,6 +144,8 @@ function App() {
     }, [changes, filter, onlyConflicts, conflicts]);
     const tree = useMemo(() => buildTree(visibleChanges, sort), [visibleChanges, sort]);
     const files = useMemo(() => flattenFiles(tree, collapsed), [tree, collapsed]);
+    const changedStatus = useMemo(() => new Map(changes.map(c => [c.path, c.status])), [changes]);
+    const finderPaths = inWorkingTree ? repoFiles : changes.map(c => c.path);
     const conflictSet = useMemo(() => new Set(conflicts), [conflicts]);
     // Open review threads per file, shown as a count on the tree row.
     const commentCounts = useMemo(() => {
@@ -427,7 +443,37 @@ function App() {
         };
     }, [selected, repo, base, commit, ignoreWS, fullFile]);
 
-    // Keyboard: move between files, filter, quick open, run, open in Zed,
+    // The finder lists every file in the working tree, so load the list each time it opens.
+    useEffect(() => {
+        if (!quickOpen || !repo) return;
+        ListFiles(repo).then(setRepoFiles).catch(() => setRepoFiles([]));
+    }, [quickOpen, repo]);
+
+    useEffect(() => {
+        InstalledEditors().then(list => setEditors(list ?? [])).catch(() => setEditors([]));
+    }, []);
+
+    useEffect(() => writeStore('git-tree-compare:editor', editorID), [editorID]);
+
+    // Link to this file's diff on the open pull request, when the branch has one.
+    useEffect(() => {
+        if (!pr || !selected) {
+            setPrFileURL('');
+            return;
+        }
+        let cancelled = false;
+        DiffAnchor(selected.path)
+            .then(anchor => !cancelled && setPrFileURL(`${pr.url}/files#diff-${anchor}`))
+            .catch(() => !cancelled && setPrFileURL(''));
+        return () => {
+            cancelled = true;
+        };
+    }, [pr, selected?.path]);
+
+    // An open file belongs to one repository and one comparison.
+    useEffect(() => setEditPath(null), [repo, commit]);
+
+    // Keyboard: move between files, filter, quick open, run, open in editor,
     // refresh, review, notes, whitespace, split, hunks.
     useEffect(() => {
         function onKey(e: KeyboardEvent) {
@@ -471,7 +517,10 @@ function App() {
                     setHelpOpen(v => !v);
                     return;
                 case 'o':
-                    if (selected && selected.status !== 'D') openZed();
+                    if (selected && selected.status !== 'D' && defaultEditor) openIn(defaultEditor);
+                    return;
+                case 'e':
+                    if (selected && inWorkingTree && selected.status !== 'D') setEditPath(selected.path);
                     return;
                 case 'r':
                     setReloadKey(k => k + 1);
@@ -663,15 +712,17 @@ function App() {
         }
     }
 
-    async function openZed() {
-        if (selected) await openInZed(selected.path);
-    }
+    // The editor used by the main button, and by the o key: the saved choice if it is still installed.
+    const defaultEditor = editors.find(e => e.id === editorID)?.id ?? editors[0]?.id ?? '';
 
-    async function openInZed(path: string) {
+    async function openIn(id: string, path = selected?.path) {
+        if (!path) return;
+        const name = editors.find(e => e.id === id)?.name ?? id;
+        setEditorID(id);
         try {
-            await OpenInZed(repo, path);
+            await OpenInEditor(repo, path, id);
         } catch (e) {
-            setError(`Could not open Zed: ${e}`);
+            setError(`Could not open ${name}: ${e}`);
         }
     }
 
@@ -746,40 +797,46 @@ function App() {
     return (
         <div id="app">
             <header className="toolbar">
-                <button className="btn" onClick={chooseRepo}>Open repo…</button>
+                <Button onClick={chooseRepo}>Open repo…</Button>
                 <div className="repo" title={repo}>{repo ? basename(repo) : 'No repository'}</div>
                 {worktrees.length > 1 && (
-                    <select className="worktree" value={repo} onChange={e => switchWorktree(e.target.value)} title="Worktree">
-                        {worktrees.map(w => (
-                            <option key={w.path} value={w.path}>{worktreeLabel(w)}</option>
-                        ))}
-                    </select>
+                    <Combobox
+                        value={repo}
+                        onChange={switchWorktree}
+                        options={worktrees.map(w => ({value: w.path, label: worktreeLabel(w)}))}
+                        title="Worktree"
+                        ariaLabel="Worktree"
+                    />
                 )}
                 <div className="spacer"/>
-                <label className="base">
+                <div className="flex shrink-0 items-center gap-1.5 whitespace-nowrap text-[12px] text-[var(--text-dim)]">
                     <span>Compare against</span>
-                    <select value={base} onChange={e => setBase(e.target.value)} disabled={!refs.length}>
-                        {refs.map(r => <option key={r} value={r}>{refLabels[r] ?? r}</option>)}
-                    </select>
-                </label>
-                <label className="base">
-                    <span>Scope</span>
-                    <select value={commit} onChange={e => setCommit(e.target.value)} disabled={!repo}>
+                    <Combobox
+                        value={base}
+                        onChange={setBase}
+                        options={refs.map(r => ({value: r, label: refLabels[r] ?? r}))}
+                        disabled={!refs.length}
+                        ariaLabel="Compare against"
+                        align="right"
+                    />
+                </div>
+                <label className="flex items-center gap-1.5 text-[12px] text-[var(--text-dim)]">
+                    Scope
+                    <Select value={commit} onChange={e => setCommit(e.target.value)} disabled={!repo}>
                         <option value="">Working tree</option>
                         {commits.map(c => (
                             <option key={c.hash} value={c.hash}>{c.short} {c.subject}</option>
                         ))}
-                    </select>
+                    </Select>
                 </label>
-                <button className="btn" onClick={() => setQuickOpen(true)} disabled={!files.length} title="Go to file (⌘P)">Go to file</button>
-                <button className="btn" onClick={openHistory} disabled={!!history} title="Past comparisons">History</button>
-                <button
-                    className="btn icon"
+                <Button onClick={() => setQuickOpen(true)} disabled={!files.length} title="Go to file (⌘P)">Go to file <Kbd>⌘P</Kbd></Button>
+                <Button onClick={openHistory} disabled={!!history} title="Past comparisons">History</Button>
+                <Button size="icon"
                     onClick={() => setReloadKey(k => k + 1)}
                     disabled={!repo || loading}
                     title="Refresh (r)"
                     aria-label="Refresh"
-                >↻</button>
+                >↻</Button>
             </header>
 
             {updateBanner}
@@ -810,16 +867,16 @@ function App() {
                         <input type="checkbox" checked={ignoreWS} onChange={e => setIgnoreWS(e.target.checked)}/>
                         Ignore whitespace (b)
                     </label>
-                    <label className="sort">
+                    <label className="ml-auto flex items-center gap-1.5 text-[12px] text-[var(--text-dim)]">
                         Sort
-                        <select value={sort} onChange={e => setSort(e.target.value as SortMode)}>
+                        <Select value={sort} onChange={e => setSort(e.target.value as SortMode)}>
                             <option value="name">name</option>
                             <option value="size">changes</option>
-                        </select>
+                        </Select>
                     </label>
-                    <button className="btn" onClick={() => setCmdOpen(v => !v)} title="Run a command (t)">Run</button>
-                    <button className="btn" onClick={copySummary} title="Copy the file list as Markdown">Copy summary</button>
-                    <button className="btn" onClick={exportPatch} title="Save the diff as a .patch file">Export patch</button>
+                    <Button onClick={() => setCmdOpen(v => !v)} title="Run a command (t)">Run</Button>
+                    <Button onClick={copySummary} title="Copy the file list as Markdown">Copy summary</Button>
+                    <Button onClick={exportPatch} title="Save the diff as a .patch file">Export patch</Button>
                 </div>
             )}
 
@@ -833,9 +890,9 @@ function App() {
             {inWorkingTree && conflicts.length > 0 && (
                 <div className="warn" role="status">
                     <span>⚠ {conflicts.length} file{conflicts.length > 1 ? 's' : ''} would conflict with {refLabels[base] ?? base} if merged.</span>
-                    <button className="btn" onClick={() => setOnlyConflicts(v => !v)}>
+                    <Button onClick={() => setOnlyConflicts(v => !v)}>
                         {onlyConflicts ? 'Show all files' : 'Show only conflicts'}
-                    </button>
+                    </Button>
                 </div>
             )}
 
@@ -844,7 +901,7 @@ function App() {
             {error && (
                 <div className="error" role="alert">
                     <span>{error}</span>
-                    <button className="btn icon" onClick={() => setError('')} aria-label="Dismiss">×</button>
+                    <Button variant="ghost" size="icon" onClick={() => setError('')} aria-label="Dismiss">×</Button>
                 </div>
             )}
 
@@ -869,7 +926,7 @@ function App() {
                     paths={menuPaths}
                     reviewable={inWorkingTree}
                     allReviewed={menuAllReviewed}
-                    onOpenZed={openInZed}
+                    onOpenInEditor={path => openIn(defaultEditor, path)}
                     onCopyPaths={copyMenuPaths}
                     onToggleReviewed={() => setReviewedMany(menuPaths)}
                     onRevert={revertMenuPaths}
@@ -881,10 +938,13 @@ function App() {
 
             {quickOpen && (
                 <QuickOpen
-                    files={files}
+                    paths={finderPaths}
+                    changed={changedStatus}
                     onClose={() => setQuickOpen(false)}
-                    onPick={file => {
-                        setSelected(file);
+                    onPick={path => {
+                        const file = changes.find(c => c.path === path);
+                        if (file) setSelected(file);
+                        else setEditPath(path);
                         setQuickOpen(false);
                     }}
                 />
@@ -913,28 +973,27 @@ function App() {
                                 onChange={e => setFilter(e.target.value)}
                             />
                             {selected && inWorkingTree && (
-                                <button
-                                    className="btn"
-                                    onClick={() => toggleReviewed(selected.path)}
+                                <Button
+onClick={() => toggleReviewed(selected.path)}
                                     title="Mark reviewed (x)"
                                 >
                                     {reviewed[selected.path] ? '☑ Reviewed' : '☐ Reviewed'}
-                                </button>
+                                </Button>
                             )}
                         </div>
                     )}
                     {repo && changes.length > 0 && inWorkingTree && picked.length > 1 && (
                         <div className="tree-select" role="status">
                             <span>{picked.length} selected</span>
-                            <button className="btn" onClick={() => setReviewedMany(picked)}>
+                            <Button onClick={() => setReviewedMany(picked)}>
                                 {picked.every(p => reviewed[p]) ? 'Unmark all' : 'Mark all reviewed'}
-                            </button>
-                            <button className="btn" onClick={() => setPicked([])} title="Clear selection (Esc)">Clear</button>
+                            </Button>
+                            <Button onClick={() => setPicked([])} title="Clear selection (Esc)">Clear</Button>
                         </div>
                     )}
                     {!repo && (
                         <Empty title="Pick a repository" hint="Compare its working tree against a branch, tag or commit.">
-                            <button className="btn" onClick={chooseRepo}>Open repo…</button>
+                            <Button className="mt-1" onClick={chooseRepo}>Open repo…</Button>
                         </Empty>
                     )}
                     {repo && loading && changes.length === 0 && <div className="empty">Loading…</div>}
@@ -979,7 +1038,15 @@ function App() {
                             onClose={() => setCmdOpen(false)}
                         />
                     )}
-                    {selected
+                    {editPath && repo && inWorkingTree
+                        ? <EditorPanel
+                            key={editPath}
+                            repo={repo}
+                            path={editPath}
+                            onSaved={() => setReloadKey(k => k + 1)}
+                            onClose={() => setEditPath(null)}
+                        />
+                        : selected
                         ? <DiffPanel
                             file={selected}
                             text={diff}
@@ -991,7 +1058,11 @@ function App() {
                             onToggleSplit={() => setSplit(s => !s)}
                             fullFile={fullFile}
                             onToggleFullFile={() => setFullFile(v => !v)}
-                            onOpenZed={openZed}
+                            editors={editors}
+                            defaultEditor={defaultEditor}
+                            onOpenIn={openIn}
+                            prFileURL={prFileURL}
+                            onEdit={inWorkingTree && selected.status !== 'D' ? () => setEditPath(selected.path) : undefined}
                             threads={fileThreads}
                             onOpenURL={BrowserOpenURL}
                         />
@@ -1027,7 +1098,7 @@ function HistoryPanel({items, onPick, onClose}: {
         <div className="history" role="dialog" aria-label="Past comparisons">
             <div className="history-head">
                 <span>Past comparisons</span>
-                <button className="btn icon" onClick={onClose} aria-label="Close">×</button>
+                <Button size="icon"  onClick={onClose} aria-label="Close">×</Button>
             </div>
             {items.length === 0 && <div className="empty-hint">Nothing yet. Open a file to start history.</div>}
             <ul>
@@ -1142,7 +1213,11 @@ function DiffPanel(props: {
     onToggleSplit: () => void;
     fullFile: boolean;
     onToggleFullFile: () => void;
-    onOpenZed: () => void;
+    editors: main.Editor[];
+    defaultEditor: string;
+    onOpenIn: (id: string) => void;
+    prFileURL: string;
+    onEdit?: () => void;
     threads: PRThread[];
     onOpenURL: (url: string) => void;
 }) {
@@ -1167,20 +1242,23 @@ function DiffPanel(props: {
                     <div className="diff-path">{file.path}</div>
                     {file.oldPath && <div className="diff-old">renamed from {file.oldPath}</div>}
                 </div>
-                <button className="btn" onClick={props.onToggleNote} title="Note (n)">{noteOpen ? 'Hide note' : 'Note'}</button>
-                <button className="btn" onClick={props.onToggleSplit} title="Toggle split view (v)">
+                <Button onClick={props.onToggleNote} title="Note (n)">{noteOpen ? 'Hide note' : 'Note'}</Button>
+                <Button onClick={props.onToggleSplit} title="Toggle split view (v)">
                     {split ? 'Unified' : 'Split'}
-                </button>
-                <button
-                    className="btn"
+                </Button>
+                <Button
                     aria-pressed={props.fullFile}
                     onClick={props.onToggleFullFile}
                     title="Show the whole file, with the changes marked, instead of only the lines around them"
                 >
                     {props.fullFile ? 'Changes only' : 'Full file'}
-                </button>
-                <button className="btn" onClick={props.onOpenZed} disabled={file.status === 'D'} title="Open in Zed (o)">Open in Zed</button>
-                <button className="btn" onClick={copyPath}>{copied ? 'Copied' : 'Copy path'}</button>
+                </Button>
+                {props.onEdit && <Button onClick={props.onEdit} title="Edit the file (e)">Edit</Button>}
+                {props.prFileURL && (
+                    <Button onClick={() => props.onOpenURL(props.prFileURL)} title="Open this file's diff on the pull request">Open on GitHub</Button>
+                )}
+                <EditorMenu editors={props.editors} current={props.defaultEditor} disabled={file.status === 'D'} onOpen={props.onOpenIn}/>
+                <Button onClick={copyPath}>{copied ? 'Copied' : 'Copy path'}</Button>
             </div>
             {noteOpen && (
                 <textarea
@@ -1285,7 +1363,7 @@ function InlineThread({thread, onOpenURL}: {thread: PRThread; onOpenURL: (url: s
                 <span>{thread.resolved ? 'resolved' : 'open'}</span>
                 {thread.outdated && <span className="cmt-tag">outdated</span>}
                 <span className="spacer"/>
-                {thread.url && <button className="btn link" onClick={() => onOpenURL(thread.url)}>Open on GitHub</button>}
+                {thread.url && <Button variant="link"  onClick={() => onOpenURL(thread.url)}>Open on GitHub</Button>}
             </div>
             {thread.comments.map((c, i) => <CommentBody key={i} comment={c}/>)}
         </div>
@@ -1359,7 +1437,9 @@ const SHORTCUT_GROUPS: {title: string; rows: [string, string][]}[] = [
         ['↑ ↓', 'Previous or next file'],
         ['/', 'Filter files'],
         ['⌘P', 'Quick open'],
-        ['o', 'Open file in Zed'],
+        ['o', 'Open file in the default editor'],
+        ['e', 'Edit the file (working tree)'],
+        ['⌘S', 'Save the file being edited'],
     ]},
     {title: 'Selecting', rows: [
         ['⌘-click', 'Add or remove a file from the selection'],
@@ -1386,7 +1466,7 @@ function ShortcutsSheet({onClose}: {onClose: () => void}) {
             <div className="shortcuts" role="dialog" aria-label="Keyboard shortcuts" onClick={e => e.stopPropagation()}>
                 <div className="shortcuts-head">
                     <span>Keyboard shortcuts</span>
-                    <button className="btn icon" onClick={onClose} aria-label="Close">×</button>
+                    <Button size="icon"  onClick={onClose} aria-label="Close">×</Button>
                 </div>
                 {SHORTCUT_GROUPS.map(group => (
                     <section key={group.title} className="shortcuts-group">
