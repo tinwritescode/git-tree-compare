@@ -15,6 +15,8 @@ import (
 var assets embed.FS
 
 func main() {
+	loadLoginPath()
+
 	// Create an instance of the app structure
 	app := NewApp()
 
