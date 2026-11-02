@@ -34,12 +34,8 @@ var (
 func (a *App) StartTerminal(repo string, cols, rows int) error {
 	StopTerminal()
 
-	shell := os.Getenv("SHELL")
-	if shell == "" {
-		shell = "/bin/zsh"
-	}
 	// A login shell loads the user's PATH, which a Finder-launched app does not have.
-	cmd := exec.Command(shell, "-l")
+	cmd := exec.Command(userShell(), "-l")
 	cmd.Dir = repo
 	cmd.Env = append(os.Environ(), "TERM=xterm-256color")
 
