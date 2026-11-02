@@ -130,3 +130,23 @@ export function toSplitRows(lines: Line[]): SplitRow[] {
     }
     return rows;
 }
+
+// DiffRow is one row of the drawn diff: a hunk header, a line (unified view) or a pair (split view).
+// newNo is the new-side line the row stands for, where review threads and search jumps land.
+export type DiffRow =
+    | {kind: 'hunk'; text: string; hunk: number}
+    | {kind: 'line'; line: Line; newNo?: number}
+    | {kind: 'pair'; row: SplitRow; newNo?: number};
+
+// diffRows turns parsed lines into the rows the diff view draws, numbering the hunks in order.
+export function diffRows(lines: Line[], split: boolean): DiffRow[] {
+    let hunk = -1;
+    if (split) {
+        return toSplitRows(lines).map(row => (row.hunk
+            ? {kind: 'hunk', text: row.hunk.text, hunk: ++hunk}
+            : {kind: 'pair', row, newNo: row.right?.newNo}));
+    }
+    return lines.map(line => (line.kind === 'hunk'
+        ? {kind: 'hunk', text: line.text, hunk: ++hunk}
+        : {kind: 'line', line, newNo: line.newNo}));
+}

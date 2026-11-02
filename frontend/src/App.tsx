@@ -1,4 +1,5 @@
-import {Fragment, type MouseEvent as ReactMouseEvent, type ReactNode, useEffect, useMemo, useRef, useState} from 'react';
+import {Fragment, memo, type MouseEvent as ReactMouseEvent, type ReactNode, type Ref, type RefObject, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState} from 'react';
+import {useVirtualizer} from '@tanstack/react-virtual';
 import './App.css';
 import {
     Changes,
@@ -19,7 +20,7 @@ import {
     TakePendingRepo,
 } from '../wailsjs/go/main/App';
 import {BrowserOpenURL, EventsOn} from '../wailsjs/runtime/runtime';
-import {parseDiff, toSplitRows, Line, SplitRow} from './diff';
+import {diffRows, type DiffRow, parseDiff, type Line, type SplitRow} from './diff';
 import {highlight} from './highlight';
 import {emptyQuery, SearchDialog, type SearchHit, type SearchQuery} from './search-dialog';
 import {paint, type Token} from './syntax';
@@ -31,7 +32,7 @@ import {
 } from './review';
 import {buildTree, FileChange, SortMode, TreeNode} from './tree';
 import type {main} from '../wailsjs/go/models';
-import {basename, buildMarkdown} from './util';
+import {basename, buildMarkdown, dropOldest} from './util';
 import {Button} from './ui/button';
 import {Kbd} from './ui/kbd';
 import {RepoPicker} from './repo-picker';
@@ -39,6 +40,7 @@ import {Landing} from './landing';
 import {TerminalPanel} from './terminal';
 
 const PR_POLL_MS = 60000;
+const DIFF_CACHE_SIZE = 40; // files whose diff text is kept while a pull request is open
 
 // Remembered state is a convenience, so every access is guarded.
 // UPDATE_DISMISSED_KEY holds the release the user chose to skip.
@@ -127,7 +129,8 @@ function App() {
     const flushing = useRef(false); // one writer to GitHub at a time, so toggles land in order
     const writes = useRef(0); // counts accepted writes, to drop reads that started before them
     const filterInput = useRef<HTMLInputElement>(null);
-    const hunk = useRef(-1);
+    const diffView = useRef<DiffHandle>(null);
+    const diffCache = useRef<{scope: typeof scope; texts: Map<string, string>}>({scope: null, texts: new Map()});
     const seenHead = useRef<{number: number; head: string} | null>(null);
 
     const pr = useMemo(() => prs.find(p => p.number === openNumber) ?? null, [prs, openNumber]);
@@ -287,6 +290,12 @@ function App() {
     useEffect(() => {
         if (tempFull && selected?.path !== tempFull) setTempFull(null);
     }, [selected, tempFull]);
+
+    // Stable across renders, so the diff does not redraw when unrelated state changes.
+    const selectedPath = selected?.path;
+    const showWholeFile = useCallback(() => {
+        if (selectedPath) setTempFull(selectedPath);
+    }, [selectedPath]);
 
     // Searching covers the changed files that still exist at the pull request's head.
     const searchPaths = useMemo(() => changes.filter(c => c.status !== 'D').map(c => c.path), [changes]);
@@ -481,10 +490,22 @@ function App() {
             return;
         }
         let cancelled = false;
-        hunk.current = -1;
         setNoteOpen(false);
-        Diff({...scope, fullFile: fullFile || tempFull === selected.path}, selected.path)
+        const whole = fullFile || tempFull === selected.path;
+        // A diff between two commits never changes, so a file opened again in this scope draws at once.
+        if (diffCache.current.scope !== scope) diffCache.current = {scope, texts: new Map()};
+        const texts = diffCache.current.texts;
+        const key = `${whole ? 'whole' : 'changes'}:${selected.path}`;
+        const cached = texts.get(key);
+        if (cached !== undefined) {
+            setDiff(cached);
+            setDiffPath(selected.path);
+            return;
+        }
+        Diff({...scope, fullFile: whole}, selected.path)
             .then(text => {
+                texts.set(key, text);
+                dropOldest(texts, DIFF_CACHE_SIZE);
                 if (cancelled) return;
                 setDiff(text);
                 setDiffPath(selected.path);
@@ -614,10 +635,7 @@ function App() {
     });
 
     function moveHunk(step: number) {
-        const hunks = document.querySelectorAll<HTMLElement>('[data-hunk]');
-        if (!hunks.length) return;
-        hunk.current = Math.min(Math.max(hunk.current + step, 0), hunks.length - 1);
-        hunks[hunk.current].scrollIntoView({block: 'start', behavior: 'smooth'});
+        diffView.current?.moveHunk(step);
     }
 
     // Replaces the app with the latest release and restarts it. On success the app quits itself.
@@ -991,13 +1009,14 @@ function App() {
                                     fullFile={fullFile || tempFull === selected.path}
                                     onToggleFullFile={() => (tempFull === selected.path ? setTempFull(null) : setFullFile(v => !v))}
                                     jump={jump?.path === selected.path && diffPath === selected.path ? jump : null}
-                                    onJumpOutside={() => setTempFull(selected.path)}
+                                    onJumpOutside={showWholeFile}
                                     editors={editors}
                                     defaultEditor={defaultEditor}
                                     onOpenIn={openIn}
                                     prFileURL={prFileURL}
                                     threads={fileThreads}
                                     onOpenURL={BrowserOpenURL}
+                                    diffView={diffView}
                                 />
                                 : <Empty title="No file selected" hint="Choose a file in the tree to see its diff."/>}
                         </main>
@@ -1142,6 +1161,7 @@ function DiffPanel(props: {
     onOpenURL: (url: string) => void;
     jump: {line: number; id: number} | null;
     onJumpOutside: () => void; // the jump line is not in this diff
+    diffView: RefObject<DiffHandle | null>;
 }) {
     const {file, text, split, note, noteOpen} = props;
     return (
@@ -1187,14 +1207,25 @@ function DiffPanel(props: {
                 onOpenURL={props.onOpenURL}
                 jump={props.jump}
                 onJumpOutside={props.fullFile ? undefined : props.onJumpOutside}
+                ref={props.diffView}
             />
         </>
     );
 }
 
+// DiffHandle lets the app move through the hunks of the diff on screen.
+export type DiffHandle = {moveHunk: (step: number) => void};
+
+const ROW_HEIGHT = 24; // a diff line: 14px type at line-height 1.7, which the rows are measured against
+const HEADER_HEIGHT = 48; // the sticky file header, which a row scrolled to the top must clear
+const BODY_PADDING = 6;
+const GUTTERS_WIDTH = 114; // two line-number gutters, the sign and the right padding of a unified line
+
 // DiffView draws the file's diff. Review threads sit under their line on the new side.
 // A thread whose line is not in the diff (outdated, or the file changed since) is listed at the top.
-function DiffView({text, path, split, threads, onOpenURL, jump, onJumpOutside}: {
+// Only the rows in view are drawn, so a file of any length opens and scrolls at the same speed.
+// It is memoised: a diff can be thousands of lines, and most app state never touches it.
+const DiffView = memo(function DiffView({text, path, split, threads, onOpenURL, jump, onJumpOutside, ref}: {
     text: string;
     path: string; // picks the language for syntax colours
     split: boolean;
@@ -1202,9 +1233,10 @@ function DiffView({text, path, split, threads, onOpenURL, jump, onJumpOutside}: 
     onOpenURL: (url: string) => void;
     jump: {line: number; id: number} | null; // a new-side line to scroll to and flash
     onJumpOutside?: () => void; // asks for the whole file when the line is not in this diff
+    ref?: Ref<DiffHandle>;
 }) {
     const lines = useMemo(() => parseDiff(text), [text]);
-    const rows = useMemo(() => (split ? toSplitRows(lines) : []), [lines, split]);
+    const rows = useMemo(() => diffRows(lines, split), [lines, split]);
     // Lines draw plain first and take their colours when the tokenizer is done.
     const [tokens, setTokens] = useState<Map<Line, Token[]>>(() => new Map());
     useEffect(() => {
@@ -1221,30 +1253,55 @@ function DiffView({text, path, split, threads, onOpenURL, jump, onJumpOutside}: 
         return map;
     }, [threads]);
     const visibleLines = useMemo(() => new Set(lines.map(l => l.newNo)), [lines]);
+    // The longest line sets the width, so the horizontal scroll does not change as rows come and go.
+    const width = useMemo(() => {
+        let columns = 0;
+        for (const l of lines) columns = Math.max(columns, l.text.length + 7 * (l.text.split('\t').length - 1)); // a tab is 8 columns
+        return `calc(${columns}ch + ${GUTTERS_WIDTH}px)`;
+    }, [lines]);
+
+    const [body, setBody] = useState<HTMLDivElement | null>(null);
+    const scrollMargin = useOffsetTop(body);
+    const virtualizer = useVirtualizer({
+        count: rows.length,
+        getScrollElement: () => body?.parentElement ?? null,
+        estimateSize: () => ROW_HEIGHT,
+        overscan: 30,
+        scrollMargin,
+        scrollPaddingStart: HEADER_HEIGHT,
+        paddingStart: BODY_PADDING,
+        paddingEnd: BODY_PADDING,
+    });
+
+    // [ and ] step through the hunks; a new diff starts again before the first.
+    const hunkAt = useRef(-1);
+    useEffect(() => {
+        hunkAt.current = -1;
+    }, [lines]);
+    useImperativeHandle(ref, () => ({
+        moveHunk(step: number) {
+            const hunks = rows.flatMap((row, i) => (row.kind === 'hunk' ? [i] : []));
+            if (!hunks.length) return;
+            hunkAt.current = Math.min(Math.max(hunkAt.current + step, 0), hunks.length - 1);
+            virtualizer.scrollToIndex(hunks[hunkAt.current], {align: 'start', behavior: 'smooth'});
+        },
+    }), [rows, virtualizer]);
 
     // Each jump runs once: scroll its line to the middle and flash it, or ask for the whole file.
     const jumped = useRef(0);
+    const [flash, setFlash] = useState<{index: number; id: number} | null>(null);
     useEffect(() => {
         if (!jump || jumped.current === jump.id || !lines.length) return;
-        const row = document.querySelector<HTMLElement>(`.diff-body [data-new="${jump.line}"]`);
-        if (!row) {
+        const index = rows.findIndex(row => row.kind !== 'hunk' && row.newNo === jump.line);
+        if (index < 0) {
             if (!visibleLines.has(jump.line) && onJumpOutside) onJumpOutside();
             return;
         }
         jumped.current = jump.id;
-        row.scrollIntoView({block: 'center'});
-        row.classList.remove('jumped');
-        void row.offsetWidth; // restart the flash when the same line is picked again
-        row.classList.add('jumped');
-    }, [jump, lines, split, visibleLines, onJumpOutside]);
+        virtualizer.scrollToIndex(index, {align: 'center'});
+        setFlash({index, id: jump.id});
+    }, [jump, lines, rows, visibleLines, onJumpOutside, virtualizer]);
     const orphans = threads.filter(t => !visibleLines.has(t.line));
-
-    function threadsAt(newNo?: number) {
-        if (newNo === undefined) return null;
-        return (byLine.get(newNo) ?? []).map((t, j) => (
-            <InlineThread key={`${newNo}-${j}`} thread={t} onOpenURL={onOpenURL}/>
-        ));
-    }
 
     const orphanBlock = orphans.length > 0 && (
         <div className="thread-orphans">
@@ -1261,46 +1318,80 @@ function DiffView({text, path, split, threads, onOpenURL, jump, onJumpOutside}: 
         );
     }
 
-    if (split) {
-        let hunkIndex = -1;
-        return (
-            <>
-                {orphanBlock}
-                <div className="diff-body split">
-                    {rows.map((row, i) => {
-                        if (row.hunk) hunkIndex++;
-                        return (
-                            <Fragment key={i}>
-                                <SplitRowView row={row} hunkIndex={hunkIndex} tokens={tokens}/>
-                                {threadsAt(row.right?.newNo)}
-                            </Fragment>
-                        );
-                    })}
-                </div>
-            </>
-        );
-    }
-
-    let hunkIndex = -1;
     return (
         <>
             {orphanBlock}
-            <div className="diff-body">
-                {lines.map((line, i) => {
-                    if (line.kind === 'hunk') {
-                        hunkIndex++;
-                        return <div key={i} className="line hunk" data-hunk={hunkIndex}>{line.text}</div>;
-                    }
+            <div
+                ref={setBody}
+                className={split ? 'diff-body split' : 'diff-body'}
+                style={{height: virtualizer.getTotalSize(), minWidth: split ? undefined : width}}
+            >
+                {virtualizer.getVirtualItems().map(item => {
+                    const row = rows[item.index];
+                    const flashed = flash?.index === item.index ? flash.id : 0;
                     return (
-                        <Fragment key={i}>
-                            <UnifiedLine line={line} tokens={tokens.get(line)}/>
-                            {threadsAt(line.newNo)}
-                        </Fragment>
+                        <div
+                            key={item.key}
+                            data-index={item.index}
+                            ref={virtualizer.measureElement}
+                            className="diff-row"
+                            style={{transform: `translateY(${item.start - scrollMargin}px)`}}
+                        >
+                            <DiffRowView key={flashed} row={row} tokens={tokens} flashed={flashed > 0}/>
+                            {row.kind !== 'hunk' && row.newNo !== undefined && (byLine.get(row.newNo) ?? []).map((t, j) => (
+                                <InlineThread key={`${row.newNo}-${j}`} thread={t} onOpenURL={onOpenURL}/>
+                            ))}
+                        </div>
                     );
                 })}
             </div>
         </>
     );
+});
+
+// useOffsetTop follows where el sits in its scrolling parent, as the panels above it open and close.
+function useOffsetTop(el: HTMLElement | null): number {
+    const [top, setTop] = useState(0);
+    useLayoutEffect(() => {
+        const parent = el?.parentElement;
+        if (!el || !parent) return;
+        const update = () => setTop(el.offsetTop);
+        const resize = new ResizeObserver(update);
+        const watch = () => {
+            resize.disconnect();
+            for (const child of parent.children) {
+                if (child !== el) resize.observe(child);
+            }
+        };
+        const children = new MutationObserver(() => {
+            watch();
+            update();
+        });
+        update();
+        watch();
+        children.observe(parent, {childList: true});
+        return () => {
+            resize.disconnect();
+            children.disconnect();
+        };
+    }, [el]);
+    return top;
+}
+
+// DiffRowView draws one row: a hunk header, a unified line or a split pair.
+function DiffRowView({row, tokens, flashed}: {row: DiffRow; tokens: Map<Line, Token[]>; flashed: boolean}) {
+    switch (row.kind) {
+        case 'hunk':
+            return <div className="line hunk" data-hunk={row.hunk}>{row.text}</div>;
+        case 'line':
+            return <UnifiedLine line={row.line} tokens={tokens.get(row.line)} flashed={flashed}/>;
+        case 'pair':
+            return <SplitRowView row={row.row} tokens={tokens} flashed={flashed}/>;
+        default: {
+            const _exhaustive: never = row;
+            return _exhaustive;
+        }
+    }
 }
 
 // InlineThread is one review thread, drawn under the diff line it is attached to.
@@ -1318,35 +1409,32 @@ function InlineThread({thread, onOpenURL}: {thread: PRThread; onOpenURL: (url: s
     );
 }
 
-function UnifiedLine({line, tokens}: {line: Line; tokens?: Token[]}) {
+const UnifiedLine = memo(function UnifiedLine({line, tokens, flashed}: {line: Line; tokens?: Token[]; flashed: boolean}) {
     const sign = line.kind === 'add' ? '+' : line.kind === 'del' ? '-' : ' ';
     return (
-        <div className={`line ${line.kind}`} data-new={line.kind === 'del' ? undefined : line.newNo}>
+        <div className={`line ${line.kind}${flashed ? ' jumped' : ''}`} data-new={line.kind === 'del' ? undefined : line.newNo}>
             <span className="gutter">{line.oldNo ?? ''}</span>
             <span className="gutter">{line.newNo ?? ''}</span>
             <span className="sign">{line.kind === 'meta' ? '' : sign}</span>
             <Content line={line} tokens={tokens}/>
         </div>
     );
-}
+});
 
-function SplitRowView({row, hunkIndex, tokens}: {row: SplitRow; hunkIndex: number; tokens: Map<Line, Token[]>}) {
-    if (row.hunk) {
-        return <div className="line hunk" data-hunk={hunkIndex}>{row.hunk.text}</div>;
-    }
+const SplitRowView = memo(function SplitRowView({row, tokens, flashed}: {row: SplitRow; tokens: Map<Line, Token[]>; flashed: boolean}) {
     return (
         <div className="split-row">
             <div className={`half left ${row.left?.kind ?? 'none'}`}>
                 <span className="gutter">{row.left?.oldNo ?? ''}</span>
                 <Content line={row.left} tokens={row.left ? tokens.get(row.left) : undefined}/>
             </div>
-            <div className={`half right ${row.right?.kind ?? 'none'}`} data-new={row.right?.newNo}>
+            <div className={`half right ${row.right?.kind ?? 'none'}${flashed ? ' jumped' : ''}`} data-new={row.right?.newNo}>
                 <span className="gutter">{row.right?.newNo ?? ''}</span>
                 <Content line={row.right} tokens={row.right ? tokens.get(row.right) : undefined}/>
             </div>
         </div>
     );
-}
+});
 
 // Content draws a line's text in its syntax colours, with the changed part of a paired line marked.
 function Content({line, tokens}: {line: Line | null; tokens?: Token[]}) {
@@ -1355,9 +1443,14 @@ function Content({line, tokens}: {line: Line | null; tokens?: Token[]}) {
     return (
         <span className="content">
             {paint(tokens ?? [{text: line.text}], line.segs).map((piece, i) => (
-                <span key={i} className={piece.changed ? 'word' : undefined} style={piece.color ? {color: piece.color} : undefined}>
-                    {piece.text}
-                </span>
+                // Plain text needs no element of its own; a large diff draws far fewer nodes.
+                piece.changed || piece.color
+                    ? (
+                        <span key={i} className={piece.changed ? 'word' : undefined} style={piece.color ? {color: piece.color} : undefined}>
+                            {piece.text}
+                        </span>
+                    )
+                    : <Fragment key={i}>{piece.text}</Fragment>
             ))}
         </span>
     );

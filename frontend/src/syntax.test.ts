@@ -1,6 +1,6 @@
 import {describe, expect, it} from 'vitest';
 import {parseDiff} from './diff';
-import {langFor, paint, sides} from './syntax';
+import {compact, langFor, paint, sides} from './syntax';
 
 describe('langFor', () => {
     it('picks the language from the extension or the file name', () => {
@@ -46,5 +46,21 @@ describe('paint', () => {
 
     it('returns the tokens as they are when no words changed', () => {
         expect(paint([{text: 'x', color: 'k'}])).toEqual([{text: 'x', color: 'k', changed: false}]);
+    });
+});
+
+describe('compact', () => {
+    it('joins neighbours of one colour and drops the default text colour', () => {
+        expect(compact([
+            {text: 'if', color: 'var(--shiki-token-keyword)'},
+            {text: ' ', color: 'var(--shiki-foreground)'},
+            {text: 'err', color: 'var(--shiki-foreground)'},
+            {text: ' :=', color: 'var(--shiki-token-keyword)'},
+            {text: ' x', color: 'var(--shiki-token-keyword)'},
+        ])).toEqual([
+            {text: 'if', color: 'var(--shiki-token-keyword)'},
+            {text: ' err'},
+            {text: ' := x', color: 'var(--shiki-token-keyword)'},
+        ]);
     });
 });

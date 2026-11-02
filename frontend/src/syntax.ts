@@ -60,6 +60,22 @@ export function sides(lines: Line[]): Side[] {
     return out;
 }
 
+// The colour Shiki gives plain text. It is the page's text colour already, so it is left off.
+const FOREGROUND = 'var(--shiki-foreground)';
+
+// compact joins neighbouring tokens of one colour and drops the default colour,
+// so a line draws as a few coloured runs instead of one element per token.
+export function compact(tokens: Token[]): Token[] {
+    const out: Token[] = [];
+    for (const {text, color: raw} of tokens) {
+        const color = raw === FOREGROUND ? undefined : raw;
+        const last = out[out.length - 1];
+        if (last && last.color === color) last.text += text;
+        else out.push(color ? {text, color} : {text});
+    }
+    return out;
+}
+
 // paint cuts the tokens at the edges of the changed words, so a line keeps its
 // syntax colours and its changed-word marks at once.
 export function paint(tokens: Token[], segs?: Seg[]): Piece[] {

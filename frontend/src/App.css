@@ -430,11 +430,20 @@ body {
 }
 
 .diff-body {
+    position: relative;
+    flex: none;
     margin: 0;
-    padding: 6px 0;
     font-family: var(--font-mono);
     font-size: 14px;
     line-height: 1.7;
+}
+
+/* Only the rows in view are drawn; each sits at its offset in the full height. */
+.diff-row {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
 }
 
 .line {

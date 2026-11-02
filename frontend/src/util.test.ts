@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'vitest';
-import {inkShare, tickWeight} from './util';
+import {dropOldest, inkShare, tickWeight} from './util';
 
 describe('inkShare', () => {
     it('is empty for no lines and full at the top of the scale', () => {
@@ -18,5 +18,13 @@ describe('tickWeight', () => {
         expect(tickWeight(0)).toBe(1);
         expect(tickWeight(400)).toBeGreaterThan(tickWeight(4));
         expect(tickWeight(400)).toBeLessThan(25);
+    });
+});
+
+describe('dropOldest', () => {
+    it('keeps the newest entries up to the size', () => {
+        const map = new Map([['a', 1], ['b', 2], ['c', 3]]);
+        dropOldest(map, 2);
+        expect([...map.keys()]).toEqual(['b', 'c']);
     });
 });

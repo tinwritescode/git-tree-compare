@@ -84,3 +84,11 @@ export function buildMarkdown(input: SummaryInput): string {
     }
     return lines.join('\n') + '\n';
 }
+
+// dropOldest removes the earliest-added keys until map holds at most size entries.
+export function dropOldest<K, V>(map: Map<K, V>, size: number) {
+    for (const key of map.keys()) {
+        if (map.size <= size) return;
+        map.delete(key);
+    }
+}
