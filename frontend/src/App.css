@@ -435,7 +435,7 @@ body {
     margin: 0;
     font-family: var(--font-mono);
     font-size: 14px;
-    line-height: 1.7;
+    line-height: 24px; /* whole pixels, so the virtualiser's row height is exact and scrolling never corrects itself */
 }
 
 /* Only the rows in view are drawn; each sits at its offset in the full height. */

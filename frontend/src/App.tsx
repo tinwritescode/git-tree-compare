@@ -1216,7 +1216,8 @@ function DiffPanel(props: {
 // DiffHandle lets the app move through the hunks of the diff on screen.
 export type DiffHandle = {moveHunk: (step: number) => void};
 
-const ROW_HEIGHT = 24; // a diff line: 14px type at line-height 1.7, which the rows are measured against
+const ROW_HEIGHT = 24; // a diff line, matching .diff-body's line-height; only rows with threads are measured
+const THREAD_HEIGHT = 96; // a guess for a row's review threads until the row is measured
 const HEADER_HEIGHT = 48; // the sticky file header, which a row scrolled to the top must clear
 const BODY_PADDING = 6;
 const GUTTERS_WIDTH = 114; // two line-number gutters, the sign and the right padding of a unified line
@@ -1253,6 +1254,12 @@ const DiffView = memo(function DiffView({text, path, split, threads, onOpenURL, 
         return map;
     }, [threads]);
     const visibleLines = useMemo(() => new Set(lines.map(l => l.newNo)), [lines]);
+    const threadsOf = useCallback(
+        (row: DiffRow) => (row.kind !== 'hunk' && row.newNo !== undefined ? byLine.get(row.newNo) ?? [] : []),
+        [byLine],
+    );
+    // Changes only with the rows or their threads, which is when the sizes must be estimated again.
+    const estimateSize = useCallback((i: number) => ROW_HEIGHT + threadsOf(rows[i]).length * THREAD_HEIGHT, [rows, threadsOf]);
     // The longest line sets the width, so the horizontal scroll does not change as rows come and go.
     const width = useMemo(() => {
         let columns = 0;
@@ -1265,13 +1272,18 @@ const DiffView = memo(function DiffView({text, path, split, threads, onOpenURL, 
     const virtualizer = useVirtualizer({
         count: rows.length,
         getScrollElement: () => body?.parentElement ?? null,
-        estimateSize: () => ROW_HEIGHT,
+        estimateSize,
         overscan: 30,
         scrollMargin,
         scrollPaddingStart: HEADER_HEIGHT,
         paddingStart: BODY_PADDING,
         paddingEnd: BODY_PADDING,
     });
+
+    // Sizes are kept by row index, so a new diff, view or set of threads starts from fresh estimates.
+    useLayoutEffect(() => {
+        virtualizer.measure();
+    }, [virtualizer, estimateSize]);
 
     // [ and ] step through the hunks; a new diff starts again before the first.
     const hunkAt = useRef(-1);
@@ -1329,18 +1341,17 @@ const DiffView = memo(function DiffView({text, path, split, threads, onOpenURL, 
                 {virtualizer.getVirtualItems().map(item => {
                     const row = rows[item.index];
                     const flashed = flash?.index === item.index ? flash.id : 0;
+                    const rowThreads = threadsOf(row);
                     return (
                         <div
                             key={item.key}
                             data-index={item.index}
-                            ref={virtualizer.measureElement}
+                            ref={rowThreads.length ? virtualizer.measureElement : undefined}
                             className="diff-row"
                             style={{transform: `translateY(${item.start - scrollMargin}px)`}}
                         >
                             <DiffRowView key={flashed} row={row} tokens={tokens} flashed={flashed > 0}/>
-                            {row.kind !== 'hunk' && row.newNo !== undefined && (byLine.get(row.newNo) ?? []).map((t, j) => (
-                                <InlineThread key={`${row.newNo}-${j}`} thread={t} onOpenURL={onOpenURL}/>
-                            ))}
+                            {rowThreads.map((t, j) => <InlineThread key={`${item.index}-${j}`} thread={t} onOpenURL={onOpenURL}/>)}
                         </div>
                     );
                 })}
