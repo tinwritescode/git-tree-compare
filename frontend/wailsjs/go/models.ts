@@ -1,25 +1,5 @@
 export namespace main {
 	
-	export class Commit {
-	    hash: string;
-	    short: string;
-	    subject: string;
-	    author: string;
-	    date: string;
-	
-	    static createFrom(source: any = {}) {
-	        return new Commit(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.hash = source["hash"];
-	        this.short = source["short"];
-	        this.subject = source["subject"];
-	        this.author = source["author"];
-	        this.date = source["date"];
-	    }
-	}
 	export class DirEntry {
 	    name: string;
 	    path: string;
@@ -108,46 +88,8 @@ export namespace main {
 	        this.deleted = source["deleted"];
 	    }
 	}
-	export class HistoryEntry {
-	    repo: string;
-	    base: string;
-	    file: string;
-	    // Go type: time
-	    openedAt: any;
-	
-	    static createFrom(source: any = {}) {
-	        return new HistoryEntry(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.repo = source["repo"];
-	        this.base = source["base"];
-	        this.file = source["file"];
-	        this.openedAt = this.convertValues(source["openedAt"], null);
-	    }
-	
-		convertValues(a: any, classs: any, asMap: boolean = false): any {
-		    if (!a) {
-		        return a;
-		    }
-		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => this.convertValues(elem, classs));
-		    } else if ("object" === typeof a) {
-		        if (asMap) {
-		            for (const key of Object.keys(a)) {
-		                a[key] = new classs(a[key]);
-		            }
-		            return a;
-		        }
-		        return new classs(a);
-		    }
-		    return a;
-		}
-	}
 	export class OpenRequest {
 	    repo: string;
-	    base: string;
 	    error: string;
 	
 	    static createFrom(source: any = {}) {
@@ -157,24 +99,7 @@ export namespace main {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.repo = source["repo"];
-	        this.base = source["base"];
 	        this.error = source["error"];
-	    }
-	}
-	export class PRBase {
-	    name: string;
-	    commit: string;
-	    fetched: boolean;
-	
-	    static createFrom(source: any = {}) {
-	        return new PRBase(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.name = source["name"];
-	        this.commit = source["commit"];
-	        this.fetched = source["fetched"];
 	    }
 	}
 	export class PRComment {
@@ -236,8 +161,6 @@ export namespace main {
 		}
 	}
 	export class PRDiscussion {
-	    number: number;
-	    url: string;
 	    threads: PRThread[];
 	    comments: PRComment[];
 	    truncated: boolean;
@@ -248,8 +171,6 @@ export namespace main {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.number = source["number"];
-	        this.url = source["url"];
 	        this.threads = this.convertValues(source["threads"], PRThread);
 	        this.comments = this.convertValues(source["comments"], PRComment);
 	        this.truncated = source["truncated"];
@@ -278,11 +199,18 @@ export namespace main {
 	    number: number;
 	    title: string;
 	    url: string;
-	    baseRefName: string;
+	    author: string;
+	    headRefName: string;
 	    headRefOid: string;
-	    baseRefOid: string;
+	    baseRefName: string;
+	    isDraft: boolean;
+	    additions: number;
+	    deletions: number;
+	    changedFiles: number;
+	    updatedAt: string;
+	    reviewDecision: string;
 	    mergeable: string;
-	    state: string;
+	    group: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new PRInfo(source);
@@ -294,26 +222,33 @@ export namespace main {
 	        this.number = source["number"];
 	        this.title = source["title"];
 	        this.url = source["url"];
-	        this.baseRefName = source["baseRefName"];
+	        this.author = source["author"];
+	        this.headRefName = source["headRefName"];
 	        this.headRefOid = source["headRefOid"];
-	        this.baseRefOid = source["baseRefOid"];
+	        this.baseRefName = source["baseRefName"];
+	        this.isDraft = source["isDraft"];
+	        this.additions = source["additions"];
+	        this.deletions = source["deletions"];
+	        this.changedFiles = source["changedFiles"];
+	        this.updatedAt = source["updatedAt"];
+	        this.reviewDecision = source["reviewDecision"];
 	        this.mergeable = source["mergeable"];
-	        this.state = source["state"];
+	        this.group = source["group"];
 	    }
 	}
 	
-	export class RevertResult {
-	    reverted: string[];
-	    skipped: string[];
+	export class ReviewTarget {
+	    base: string;
+	    head: string;
 	
 	    static createFrom(source: any = {}) {
-	        return new RevertResult(source);
+	        return new ReviewTarget(source);
 	    }
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.reverted = source["reverted"];
-	        this.skipped = source["skipped"];
+	        this.base = source["base"];
+	        this.head = source["head"];
 	    }
 	}
 	export class RunResult {
@@ -335,7 +270,7 @@ export namespace main {
 	export class Scope {
 	    repo: string;
 	    base: string;
-	    commit: string;
+	    head: string;
 	    ignoreWS: boolean;
 	    fullFile?: boolean;
 	
@@ -347,27 +282,9 @@ export namespace main {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.repo = source["repo"];
 	        this.base = source["base"];
-	        this.commit = source["commit"];
+	        this.head = source["head"];
 	        this.ignoreWS = source["ignoreWS"];
 	        this.fullFile = source["fullFile"];
-	    }
-	}
-	export class SyncResult {
-	    number: number;
-	    marked: number;
-	    alreadyDone: number;
-	    notInPR: number;
-	
-	    static createFrom(source: any = {}) {
-	        return new SyncResult(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.number = source["number"];
-	        this.marked = source["marked"];
-	        this.alreadyDone = source["alreadyDone"];
-	        this.notInPR = source["notInPR"];
 	    }
 	}
 	export class UpdateInfo {
@@ -388,26 +305,6 @@ export namespace main {
 	        this.url = source["url"];
 	        this.available = source["available"];
 	        this.installable = source["installable"];
-	    }
-	}
-	export class Worktree {
-	    path: string;
-	    branch: string;
-	    head: string;
-	    detached: boolean;
-	    bare: boolean;
-	
-	    static createFrom(source: any = {}) {
-	        return new Worktree(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.path = source["path"];
-	        this.branch = source["branch"];
-	        this.head = source["head"];
-	        this.detached = source["detached"];
-	        this.bare = source["bare"];
 	    }
 	}
 

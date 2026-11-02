@@ -20,7 +20,7 @@ export function Landing({last, recent, error, onOpen, onPick, onShortcuts, banne
                 {banner}
                 <img className="landing-logo" src={logo} alt=""/>
                 <h1>git-tree-compare</h1>
-                <p className="landing-lede">See what a branch changes, file by file, against the branch it merges into.</p>
+                <p className="landing-lede">Review your open pull requests, file by file. Press x and GitHub knows.</p>
 
                 {error && <div className="error" role="alert">{error}</div>}
 
@@ -59,7 +59,7 @@ export function Landing({last, recent, error, onOpen, onPick, onShortcuts, banne
 
                 <footer className="landing-foot">
                     <button className="landing-link" onClick={onShortcuts}>Keyboard shortcuts (?)</button>
-                    <span>From a terminal: <code>git-tree-compare [path] [--base REF]</code></span>
+                    <span>From a terminal: <code>git-tree-compare [path]</code></span>
                 </footer>
             </div>
         </div>

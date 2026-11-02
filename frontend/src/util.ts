@@ -31,10 +31,21 @@ export function basename(path: string): string {
     return path.split(/[\\/]/).filter(Boolean).pop() ?? path;
 }
 
+// timeAgo says how long ago an ISO time was, in the largest unit that fits.
+export function timeAgo(iso: string, now = Date.now()): string {
+    const seconds = (now - new Date(iso).getTime()) / 1000;
+    if (Number.isNaN(seconds)) return 'recently';
+    if (seconds < 60) return 'just now';
+    const units: [number, string][] = [[86400 * 365, 'year'], [86400 * 30, 'month'], [86400, 'day'], [3600, 'hour'], [60, 'minute']];
+    for (const [size, name] of units) {
+        const n = Math.floor(seconds / size);
+        if (n >= 1) return `${n} ${name}${n === 1 ? '' : 's'} ago`;
+    }
+    return 'just now';
+}
+
 export interface SummaryInput {
-    repo: string;
-    base: string;
-    scopeLabel: string;
+    title: string;
     files: {path: string; status: string; added: number; deleted: number; oldPath?: string}[];
     reviewed: Record<string, string>;
     notes: Record<string, string>;
@@ -45,7 +56,7 @@ export interface SummaryInput {
 export function buildMarkdown(input: SummaryInput): string {
     const done = input.files.filter(f => input.reviewed[f.path]).length;
     const lines = [
-        `## Changes: ${input.scopeLabel} vs ${input.base}`,
+        `## ${input.title}`,
         '',
         `${input.files.length} files, ${done} reviewed.`,
         '',

@@ -2,25 +2,12 @@ package main
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
-	"os/exec"
 	"strings"
 )
 
-// markBatchSize is how many markFileAsViewed mutations go into one request.
+// markBatchSize is how many viewed mutations go into one request.
 const markBatchSize = 50
-
-// ErrNoPullRequest means the current branch has no open pull request to sync to.
-var ErrNoPullRequest = errors.New("This branch has no open pull request, so there is nothing to sync to.")
-
-// SyncResult says what a sync did on the pull request.
-type SyncResult struct {
-	Number      int `json:"number"`
-	Marked      int `json:"marked"`      // reviewed here, now viewed on GitHub
-	AlreadyDone int `json:"alreadyDone"` // already viewed on GitHub
-	NotInPR     int `json:"notInPR"`     // reviewed here, but not a changed file of the pull request
-}
 
 // prFilesQuery lists the pull request's files with the viewer's viewed state, one page at a time.
 const prFilesQuery = `query($id: ID!, $cursor: String) {
@@ -63,13 +50,17 @@ func parsePRFiles(out []byte) (map[string]string, string, bool, error) {
 	return states, page.EndCursor, page.HasNextPage, nil
 }
 
-// markMutation marks n files as viewed in one request. Paths are passed as variables, never spliced in.
-func markMutation(n int) string {
+// viewedMutation sets n files as viewed or not viewed in one request. Paths are passed as variables, never spliced in.
+func viewedMutation(viewed bool, n int) string {
+	name := "unmarkFileAsViewed"
+	if viewed {
+		name = "markFileAsViewed"
+	}
 	var decl, body strings.Builder
 	decl.WriteString("mutation($id: ID!")
 	for i := 0; i < n; i++ {
 		fmt.Fprintf(&decl, ", $p%d: String!", i)
-		fmt.Fprintf(&body, " m%d: markFileAsViewed(input: {pullRequestId: $id, path: $p%d}) { clientMutationId }", i, i)
+		fmt.Fprintf(&body, " m%d: %s(input: {pullRequestId: $id, path: $p%d}) { clientMutationId }", i, name, i)
 	}
 	decl.WriteString(") {")
 	return decl.String() + body.String() + " }"
@@ -81,62 +72,27 @@ func ghGraphQL(repo, query string, vars map[string]string) ([]byte, error) {
 	for k, v := range vars {
 		args = append(args, "-f", k+"="+v)
 	}
-	cmd := exec.Command("gh", args...)
-	cmd.Dir = repo
-	out, err := cmd.Output()
-	if err != nil {
-		var exit *exec.ExitError
-		if errors.As(err, &exit) && len(exit.Stderr) > 0 {
-			return nil, fmt.Errorf("GitHub said: %s", strings.TrimSpace(string(exit.Stderr)))
-		}
-		return nil, err
-	}
-	return out, nil
+	return runGH(repo, args...)
 }
 
-// SyncReviewed marks the given paths as viewed on the current branch's pull request.
-// It only marks files that are changed in that pull request and not yet viewed there.
-func SyncReviewed(repo string, paths []string) (SyncResult, error) {
-	pr := PRStatus(repo)
-	if pr == nil || pr.ID == "" {
-		return SyncResult{}, ErrNoPullRequest
-	}
-	result := SyncResult{Number: pr.Number}
-
-	files, err := prViewedStates(repo, pr.ID)
-	if err != nil {
-		return result, err
-	}
-
-	var todo []string
-	for _, p := range paths {
-		state, inPR := files[p]
-		switch {
-		case !inPR:
-			result.NotInPR++
-		case state == "VIEWED":
-			result.AlreadyDone++
-		default:
-			todo = append(todo, p)
-		}
-	}
-
-	for start := 0; start < len(todo); start += markBatchSize {
-		end := min(start+markBatchSize, len(todo))
-		vars := map[string]string{"id": pr.ID}
-		for i, p := range todo[start:end] {
+// SetViewed marks the paths as viewed on the pull request, or removes the mark. Repeating it is harmless.
+func SetViewed(repo, prID string, paths []string, viewed bool) error {
+	for start := 0; start < len(paths); start += markBatchSize {
+		end := min(start+markBatchSize, len(paths))
+		vars := map[string]string{"id": prID}
+		for i, p := range paths[start:end] {
 			vars[fmt.Sprintf("p%d", i)] = p
 		}
-		if _, err := ghGraphQL(repo, markMutation(end-start), vars); err != nil {
-			return result, err
+		if _, err := ghGraphQL(repo, viewedMutation(viewed, end-start), vars); err != nil {
+			return err
 		}
-		result.Marked += end - start
 	}
-	return result, nil
+	return nil
 }
 
-// prViewedStates returns the viewed state of every file in the pull request, reading all pages.
-func prViewedStates(repo, id string) (map[string]string, error) {
+// PRViewedStates returns the viewer's state of every file in the pull request: VIEWED, UNVIEWED or DISMISSED.
+// DISMISSED means the file changed after it was viewed. It reads all pages.
+func PRViewedStates(repo, id string) (map[string]string, error) {
 	all := map[string]string{}
 	cursor := ""
 	for {

@@ -23,9 +23,7 @@ func TestInstalledEditorsFindsAppBundles(t *testing.T) {
 }
 
 func TestOpenInEditorRejectsUnknownID(t *testing.T) {
-	repo, _ := newTestRepo(t)
-
-	if err := OpenInEditor(repo, "main.go", "notepad"); err == nil {
+	if err := OpenInEditor(t.TempDir(), "main.go", "notepad"); err == nil {
 		t.Fatal("OpenInEditor accepted an unknown editor")
 	}
 }

@@ -2,54 +2,46 @@ import {Fragment, type MouseEvent as ReactMouseEvent, type ReactNode, useEffect,
 import './App.css';
 import {
     Changes,
-    Commits,
-    Conflicts,
-    DetectBase,
-    Diff,
-    ExportPatch,
-    Fingerprint,
-    History,
-    DiffAnchor,
-    InstallUpdate,
-    ListFiles,
-    InstalledEditors,
-    OpenInEditor,
-    OpenPR,
-    PRComments,
-    PRStatus,
-    RecordHistory,
-    Refs,
     CheckUpdate,
+    CurrentPRNumber,
+    Diff,
+    DiffAnchor,
+    ExportPatch,
+    InstallUpdate,
+    InstalledEditors,
+    ListPRs,
+    OpenInEditor,
+    PRComments,
+    PRViewedStates,
+    PrepareReview,
     ResolveRepo,
-    RevertToBase,
-    Stamps,
-    SyncReviewed,
+    SetViewed,
     TakePendingRepo,
-    Worktrees,
 } from '../wailsjs/go/main/App';
 import {BrowserOpenURL, EventsOn} from '../wailsjs/runtime/runtime';
 import {parseDiff, toSplitRows, Line, SplitRow} from './diff';
-import {EditorPanel} from './editor';
 import {EditorMenu} from './editor-menu';
-import {CommandPanel, CommentBody, CommentsPanel, FileMenu, PRBanner, PRDiscussion, PRThread, PRView, QuickOpen, UpdateBanner} from './panels';
+import {Command, CommandPalette, CommandPanel, CommentBody, CommentsPanel, FileMenu, PRDiscussion, PRThread, QuickOpen, UpdateBanner} from './panels';
+import {PR, PRList, ReviewMeter} from './prs';
+import {
+    applyServerStates, emptyRecord, isChangedSinceReview, isReviewed, nextBatch, nextUnreviewed, ReviewRecord, settleBatch, toggleReviewed,
+} from './review';
 import {buildTree, FileChange, SortMode, TreeNode} from './tree';
 import type {main} from '../wailsjs/go/models';
 import {basename, buildMarkdown} from './util';
 import {Button} from './ui/button';
 import {Kbd} from './ui/kbd';
-import {Select} from './ui/select';
-import {Combobox} from './ui/combobox';
 import {RepoPicker} from './repo-picker';
 import {Landing} from './landing';
 import {TerminalPanel} from './terminal';
 
-const PREFERRED_BASES = ['main', 'staging', 'master'];
-const POLL_MS = 3000;
 const PR_POLL_MS = 60000;
 
 // Remembered state is a convenience, so every access is guarded.
 // UPDATE_DISMISSED_KEY holds the release the user chose to skip.
 const UPDATE_DISMISSED_KEY = 'git-tree-compare:update-dismissed';
+const RECENT_KEY = 'git-tree-compare:recent';
+const RECENT_LIMIT = 8;
 
 function readStore<T>(key: string, fallback: T): T {
     try {
@@ -68,31 +60,30 @@ function writeStore(key: string, value: unknown) {
     }
 }
 
-type HistoryItem = {repo: string; base: string; file: string; openedAt: string};
-type WorktreeItem = {path: string; branch: string; head: string; detached: boolean; bare: boolean};
-type CommitItem = {hash: string; short: string; subject: string; author: string; date: string};
-type OpenRequest = {repo?: string; base?: string; error?: string};
+const reviewKey = (repo: string, number: number) => `git-tree-compare:review:${repo}#${number}`;
+
+type OpenRequest = {repo?: string; error?: string};
 
 function App() {
     const [repo, setRepo] = useState(() => readStore('git-tree-compare:last', {repo: ''}).repo);
-    const [refs, setRefs] = useState<string[]>([]);
-    const [refLabels, setRefLabels] = useState<Record<string, string>>({}); // ref name -> how to show it
-    const [prBase, setPrBase] = useState<main.PRBase | null>(null);
-    const [onlyConflicts, setOnlyConflicts] = useState(false);
-    const [helpOpen, setHelpOpen] = useState(false);
     const [landing, setLanding] = useState(true); // the start screen, until a repository opens
+    const [prs, setPrs] = useState<PR[]>([]);
+    const [prsLoading, setPrsLoading] = useState(false);
+    const [prsError, setPrsError] = useState('');
+    const [prsRead, setPrsRead] = useState(false); // the list has been read from GitHub for this repository
+    const [openNumber, setOpenNumber] = useState<number | null>(null); // the pull request under review
+    const [target, setTarget] = useState<main.ReviewTarget | null>(null);
+    const [pollTick, setPollTick] = useState(0);
+    const [record, setRecord] = useState<ReviewRecord>(emptyRecord);
+    const [syncError, setSyncError] = useState('');
+    const [helpOpen, setHelpOpen] = useState(false);
     const [termOpen, setTermOpen] = useState(false);
     const [termStarted, setTermStarted] = useState(false); // the shell starts the first time the dock opens
     const [picked, setPicked] = useState<string[]>([]); // multi-selection, in tree order; empty means just `selected`
     const pickedSet = useMemo(() => new Set(picked), [picked]);
     const [menu, setMenu] = useState<{x: number; y: number; path: string} | null>(null);
-    const [base, setBase] = useState(() => readStore('git-tree-compare:last', {base: ''}).base);
-    const [commit, setCommit] = useState(''); // '' means the working tree
-    const [commits, setCommits] = useState<CommitItem[]>([]);
     const [ignoreWS, setIgnoreWS] = useState(() => readStore('git-tree-compare:ignoreWS', false));
-    const [worktrees, setWorktrees] = useState<WorktreeItem[]>([]);
     const [changes, setChanges] = useState<FileChange[]>([]);
-    const [conflicts, setConflicts] = useState<string[]>([]);
     const [selected, setSelected] = useState<FileChange | null>(null);
     const [diff, setDiff] = useState('');
     const [filter, setFilter] = useState('');
@@ -100,53 +91,56 @@ function App() {
     const [split, setSplit] = useState(() => readStore('git-tree-compare:split', false));
     const [fullFile, setFullFile] = useState(() => readStore('git-tree-compare:fullFile', false));
     const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
-    const [reviewed, setReviewed] = useState<Record<string, string>>({});
     const [notes, setNotes] = useState<Record<string, string>>({});
     const [noteOpen, setNoteOpen] = useState(false);
-    const [pr, setPr] = useState<PRView | null>(null);
     const [prFileURL, setPrFileURL] = useState(''); // this file's diff on the open pull request
     const [editors, setEditors] = useState<main.Editor[]>([]); // editors installed on this machine
     const [editorID, setEditorID] = useState(() => readStore('git-tree-compare:editor', ''));
-    const [prSeen, setPrSeen] = useState('');
     const [discussion, setDiscussion] = useState<PRDiscussion | null>(null); // review comments on the open PR
     const [commentsOpen, setCommentsOpen] = useState(false);
     const [commentsLoading, setCommentsLoading] = useState(false);
     const [update, setUpdate] = useState<main.UpdateInfo | null>(null); // a newer release, if one exists
     const [installing, setInstalling] = useState(false);
     const [quickOpen, setQuickOpen] = useState(false);
+    const [paletteOpen, setPaletteOpen] = useState(false);
     const [picking, setPicking] = useState(false);
-    const [recent, setRecent] = useState<string[]>([]);
+    const [recent, setRecent] = useState<string[]>(() => readStore<string[]>(RECENT_KEY, []));
     const [pickError, setPickError] = useState('');
     const [cmdOpen, setCmdOpen] = useState(false);
-    const [repoFiles, setRepoFiles] = useState<string[]>([]); // every file the finder can open
-    const [editPath, setEditPath] = useState<string | null>(null); // file open in the editor, if any
-    const [history, setHistory] = useState<HistoryItem[] | null>(null);
     const [loading, setLoading] = useState(false);
-    const [reloadKey, setReloadKey] = useState(0);
     const [error, setError] = useState('');
     const [flash, setFlash] = useState('');
 
     // Values read inside effects and handlers, without re-running them.
-    const wantBase = useRef<string | null>(null); // base from the command line, used once
-    const wantFile = useRef<string | null>(null); // file from a history entry, selected once
-    const reviewedRef = useRef<Record<string, string>>({});
-    const fingerprint = useRef<string | null>(null);
+    const recordRef = useRef<ReviewRecord>(emptyRecord);
+    const owner = useRef<{repo: string; id: string; key: string} | null>(null); // whose review recordRef holds
+    const flushing = useRef(false); // one writer to GitHub at a time, so toggles land in order
+    const writes = useRef(0); // counts accepted writes, to drop reads that started before them
     const filterInput = useRef<HTMLInputElement>(null);
     const hunk = useRef(-1);
+    const seenHead = useRef<{number: number; head: string} | null>(null);
 
-    const scope = useMemo(() => ({repo, base, commit, ignoreWS}), [repo, base, commit, ignoreWS]);
-    const inWorkingTree = commit === '';
+    const pr = useMemo(() => prs.find(p => p.number === openNumber) ?? null, [prs, openNumber]);
+    const scope = useMemo(
+        () => (target ? {repo, base: target.base, head: target.head, ignoreWS} : null),
+        [repo, target, ignoreWS],
+    );
 
     const visibleChanges = useMemo(() => {
         const q = filter.trim().toLowerCase();
-        const byName = q ? changes.filter(c => c.path.toLowerCase().includes(q)) : changes;
-        return onlyConflicts && conflicts.length ? byName.filter(c => conflicts.includes(c.path)) : byName;
-    }, [changes, filter, onlyConflicts, conflicts]);
+        return q ? changes.filter(c => c.path.toLowerCase().includes(q)) : changes;
+    }, [changes, filter]);
     const tree = useMemo(() => buildTree(visibleChanges, sort), [visibleChanges, sort]);
     const files = useMemo(() => flattenFiles(tree, collapsed), [tree, collapsed]);
-    const changedStatus = useMemo(() => new Map(changes.map(c => [c.path, c.status])), [changes]);
-    const finderPaths = inWorkingTree ? repoFiles : changes.map(c => c.path);
-    const conflictSet = useMemo(() => new Set(conflicts), [conflicts]);
+    const reviewed = useMemo(
+        () => Object.fromEntries(changes.filter(c => isReviewed(record, c.path)).map(c => [c.path, 'reviewed'])),
+        [changes, record],
+    );
+    const changedSinceReview = useMemo(
+        () => new Set(changes.filter(c => isChangedSinceReview(record, c.path)).map(c => c.path)),
+        [changes, record],
+    );
+    const unsynced = useMemo(() => new Set(syncError ? Object.keys(record.pending) : []), [syncError, record]);
     // Open review threads per file, shown as a count on the tree row.
     const commentCounts = useMemo(() => {
         const counts: Record<string, number> = {};
@@ -170,23 +164,54 @@ function App() {
         () => (selected ? (discussion?.threads ?? []).filter(t => t.path === selected.path) : []),
         [discussion, selected],
     );
-    const reviewedCount = changes.filter(c => reviewed[c.path]).length;
+    const reviewedCount = Object.keys(reviewed).length;
     // The menu acts on the whole selection when the right-clicked file is part of it.
     const menuPaths = menu ? (pickedSet.has(menu.path) ? picked : [menu.path]) : [];
     const menuAllReviewed = menuPaths.length > 0 && menuPaths.every(p => reviewed[p]);
-    const totals = useMemo(() => sumChanges(changes), [changes]);
-    const currentWorktree = worktrees.find(w => w.path === repo);
-    const newPrCommits = !!pr && prSeen !== '' && pr.headRefOid !== prSeen;
 
     function showFlash(message: string) {
         setFlash(message);
         setTimeout(() => setFlash(''), 2500);
     }
 
-    function updateReviewed(next: Record<string, string>) {
-        reviewedRef.current = next;
-        setReviewed(next);
-        writeStore(`git-tree-compare:reviewed:${repo}|${base}`, next);
+    function commitRecord(next: ReviewRecord) {
+        recordRef.current = next;
+        setRecord(next);
+        if (owner.current) writeStore(owner.current.key, next);
+    }
+
+    // Sends pending marks to GitHub, one batch at a time. A failure stops here and keeps them
+    // pending; the next poll tries again. A pull request closed mid-way keeps its own queue on disk.
+    async function flushReview() {
+        const writer = owner.current;
+        if (flushing.current || !writer) return;
+        flushing.current = true;
+        try {
+            for (;;) {
+                const batch = owner.current === writer ? nextBatch(recordRef.current) : null;
+                if (!batch) break;
+                await SetViewed(writer.repo, writer.id, batch.paths, batch.viewed);
+                writes.current++;
+                if (owner.current === writer) commitRecord(settleBatch(recordRef.current, batch));
+            }
+            setSyncError('');
+        } catch (e) {
+            setSyncError(String(e));
+        } finally {
+            flushing.current = false;
+        }
+    }
+
+    // Marks one file or a selection, on screen now and on GitHub right after.
+    function toggleFiles(paths: string[]) {
+        if (!paths.length) return;
+        const {record: next, viewed} = toggleReviewed(recordRef.current, paths);
+        commitRecord(next);
+        flushReview();
+        if (viewed && paths.length === 1 && paths[0] === selected?.path) {
+            const following = nextUnreviewed(files, next, paths[0]);
+            if (following) setSelected(following);
+        }
     }
 
     function updateNote(path: string, text: string) {
@@ -218,7 +243,6 @@ function App() {
         function apply(req: OpenRequest | null) {
             if (!req) return;
             if (req.error) setError(req.error);
-            if (req.base) wantBase.current = req.base;
             if (req.repo) {
                 setRepo(req.repo);
                 setLanding(false);
@@ -233,15 +257,8 @@ function App() {
         };
     }, []);
 
-    // The start screen lists recent repositories too.
-    useEffect(() => {
-        History().then(items => setRecent(recentRepos(items))).catch(() => {});
-    }, []);
-
-    // The in-app picker lists recent repositories from history.
-    async function chooseRepo() {
+    function chooseRepo() {
         setPickError('');
-        setRecent(recentRepos(await History().catch(() => [])));
         setPicking(true);
     }
 
@@ -257,53 +274,66 @@ function App() {
         }
     }
 
-    // Per-repo state, and the base: explicit flag, then the open PR's base,
-    // then the base already chosen, then a common default.
-    useEffect(() => {
-        if (!repo) return;
-        setCollapsed(new Set(readStore<string[]>(`git-tree-compare:collapsed:${repo}`, [])));
-        setNotes(readStore<Record<string, string>>(`git-tree-compare:notes:${repo}`, {}));
-        fingerprint.current = null;
-        Worktrees(repo)
-            .then(list => setWorktrees(list.filter(w => !w.bare)))
-            .catch(() => setWorktrees([]));
-        Promise.all([Refs(repo), DetectBase(repo).catch(() => null)])
-            .then(([list, found]) => {
-                // The pull request's base commit is the default: it is what GitHub compares against.
-                const prCommit = found?.commit ?? '';
-                const all = prCommit && !list.includes(prCommit) ? [prCommit, ...list] : list;
-                setRefs(all);
-                setPrBase(found ?? null);
-                setRefLabels(found && prCommit ? {[prCommit]: baseLabel(found)} : {});
-                const explicit = wantBase.current;
-                wantBase.current = null;
-                if (explicit && !all.includes(explicit)) {
-                    showFlash(`Base ${shortBase(explicit)} is not in this repository, so the default base is used.`);
-                }
-                setBase(current => {
-                    if (explicit && all.includes(explicit)) return explicit;
-                    if (prCommit) return prCommit;
-                    if (all.includes(current)) return current;
-                    return PREFERRED_BASES.find(b => all.includes(b)) ?? all[0] ?? '';
-                });
-            })
-            .catch(e => setError(String(e)));
-    }, [repo]);
+    function closeReview() {
+        setOpenNumber(null);
+        setTarget(null);
+        setCommentsOpen(false);
+        setCmdOpen(false);
+        setPicked([]);
+        setFilter('');
+    }
 
-    // The open pull request, refreshed every minute.
+    // Per-repo state. When the checked-out branch has an open pull request, it opens directly.
     useEffect(() => {
         if (!repo) return;
         let cancelled = false;
-        const load = () => PRStatus(repo)
-            .then(p => !cancelled && setPr(p ?? null))
-            .catch(() => !cancelled && setPr(null));
-        load();
-        const timer = setInterval(load, PR_POLL_MS);
+        closeReview();
+        setPrs([]);
+        setPrsRead(false);
+        setCollapsed(new Set(readStore<string[]>(`git-tree-compare:collapsed:${repo}`, [])));
+        setNotes(readStore<Record<string, string>>(`git-tree-compare:notes:${repo}`, {}));
+        CurrentPRNumber(repo)
+            .then(number => {
+                if (!cancelled && number) setOpenNumber(number);
+            })
+            .catch(() => {});
         return () => {
             cancelled = true;
-            clearInterval(timer);
         };
     }, [repo]);
+
+    // The open pull requests, refreshed every minute while the window is in front.
+    useEffect(() => {
+        if (!repo) return;
+        let cancelled = false;
+        setPrsLoading(true);
+        ListPRs(repo)
+            .then(list => {
+                if (cancelled) return;
+                setPrs(list);
+                setPrsError('');
+                setPrsRead(true);
+            })
+            .catch(e => !cancelled && setPrsError(String(e)))
+            .finally(() => !cancelled && setPrsLoading(false));
+        return () => {
+            cancelled = true;
+        };
+    }, [repo, pollTick]);
+
+    useEffect(() => {
+        const timer = setInterval(() => {
+            if (!document.hidden) setPollTick(t => t + 1);
+        }, PR_POLL_MS);
+        return () => clearInterval(timer);
+    }, []);
+
+    // A pull request that was merged or closed leaves the list, so the review ends.
+    useEffect(() => {
+        if (!prsRead || openNumber === null || pr) return;
+        showFlash(`Pull request #${openNumber} is no longer open.`);
+        closeReview();
+    }, [prsRead, openNumber, pr]);
 
     // Checks GitHub for a newer release once at launch. Offline or without gh, it stays quiet.
     useEffect(() => {
@@ -314,112 +344,104 @@ function App() {
             .catch(() => {});
     }, []);
 
-    // Review comments for the open PR, so the banner can show how many are still open.
+    // The review record of the open pull request: last known states and marks still to send.
+    useEffect(() => {
+        const next = pr ? {repo, id: pr.id, key: reviewKey(repo, pr.number)} : null;
+        owner.current = next;
+        const saved = next ? readStore<ReviewRecord>(next.key, emptyRecord) : emptyRecord;
+        recordRef.current = saved;
+        setRecord(saved);
+        setSyncError('');
+    }, [repo, pr?.id]);
+
+    // What GitHub says is viewed, on open and on every poll. Marks made here still wait their turn,
+    // and a failed send is retried here. A read that started before a write is stale, so it is dropped.
+    useEffect(() => {
+        if (!pr) return;
+        let cancelled = false;
+        const version = writes.current;
+        PRViewedStates(repo, pr.id)
+            .then(states => {
+                if (!cancelled && version === writes.current) commitRecord(applyServerStates(recordRef.current, states));
+            })
+            .catch(() => {})
+            .finally(() => {
+                if (!cancelled) flushReview();
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [repo, pr?.id, pr?.headRefOid, pollTick]);
+
+    // Fetches the pull request, again whenever new commits land on it.
+    useEffect(() => {
+        if (!pr) {
+            seenHead.current = null;
+            return;
+        }
+        let cancelled = false;
+        const seen = seenHead.current;
+        if (seen?.number === pr.number && seen.head !== pr.headRefOid) {
+            showFlash(`New commits on #${pr.number}. The diff is up to date.`);
+        }
+        seenHead.current = {number: pr.number, head: pr.headRefOid};
+        setLoading(true);
+        PrepareReview(repo, pr)
+            .then(found => {
+                if (!cancelled) setTarget(found);
+            })
+            .catch(e => {
+                if (cancelled) return;
+                setError(`Could not fetch pull request #${pr.number}: ${e}`);
+                setLoading(false);
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [repo, pr?.number, pr?.headRefOid]);
+
+    // Review comments, so the header can show how many are still open.
     useEffect(() => {
         if (!pr) {
             setDiscussion(null);
             return;
         }
-        PRComments(repo).then(setDiscussion).catch(() => setDiscussion(null));
-    }, [repo, pr?.number]);
+        PRComments(repo, pr.id).then(setDiscussion).catch(() => setDiscussion(null));
+    }, [repo, pr?.id]);
 
-    // Remember the PR head the user last saw, so new commits can be flagged.
+    // Reload changed files when the commits or the whitespace option change. Keep the
+    // selection if the file is still part of the pull request, otherwise select the first file.
     useEffect(() => {
-        if (!repo || !pr) return;
-        const key = `git-tree-compare:pr-seen:${repo}`;
-        const seen = readStore<{number: number; head: string} | null>(key, null);
-        if (!seen || seen.number !== pr.number) {
-            writeStore(key, {number: pr.number, head: pr.headRefOid});
-            setPrSeen(pr.headRefOid);
-        } else {
-            setPrSeen(seen.head);
+        if (!scope) {
+            setChanges([]);
+            setSelected(null);
+            return;
         }
-    }, [repo, pr?.number, pr?.headRefOid]);
-
-    function markPrSeen() {
-        if (!pr) return;
-        writeStore(`git-tree-compare:pr-seen:${repo}`, {number: pr.number, head: pr.headRefOid});
-        setPrSeen(pr.headRefOid);
-    }
-
-    // Commits between base and HEAD, for the commit scope.
-    useEffect(() => {
-        if (!repo || !base) return;
-        setCommit('');
-        Commits(repo, base).then(setCommits).catch(() => setCommits([]));
-    }, [repo, base]);
-
-    // Reviewed marks belong to one repo and base.
-    useEffect(() => {
-        if (!repo || !base) return;
-        const saved = readStore<Record<string, string>>(`git-tree-compare:reviewed:${repo}|${base}`, {});
-        reviewedRef.current = saved;
-        setReviewed(saved);
-        fingerprint.current = null;
-    }, [repo, base]);
-
-    // Reload changed files when the scope changes or on refresh. Keep the
-    // selection if the file still changed, otherwise select the first file.
-    // Drop reviewed marks for files saved since they were checked.
-    useEffect(() => {
-        if (!repo || !base) return;
         let cancelled = false;
         setLoading(true);
-        Promise.all([
-            Changes(scope),
-            inWorkingTree ? Conflicts(repo, base).catch(() => [] as string[]) : Promise.resolve([] as string[]),
-        ])
-            .then(async ([list, conflictList]) => {
+        Changes(scope)
+            .then(list => {
                 if (cancelled) return;
                 setChanges(list);
-                setConflicts(conflictList ?? []);
                 setError('');
-
-                if (inWorkingTree) {
-                    const marked = Object.keys(reviewedRef.current);
-                    if (marked.length) {
-                        const now = await Stamps(repo, marked);
-                        if (cancelled) return;
-                        const kept = Object.fromEntries(
-                            marked.filter(p => now[p] === reviewedRef.current[p]).map(p => [p, now[p]]),
-                        );
-                        if (Object.keys(kept).length !== marked.length) updateReviewed(kept);
-                    }
-                }
-
-                setSelected(prev => {
-                    const want = wantFile.current;
-                    wantFile.current = null;
-                    const target = want ?? prev?.path;
-                    return list.find(f => f.path === target) ?? list[0] ?? null;
-                });
+                setSelected(prev => list.find(f => f.path === prev?.path) ?? list[0] ?? null);
             })
             .catch(e => !cancelled && setError(String(e)))
             .finally(() => !cancelled && setLoading(false));
         return () => {
             cancelled = true;
         };
-    }, [repo, base, commit, ignoreWS, reloadKey]);
-
-    // Auto refresh: poll a cheap fingerprint of the working tree and reload on change.
-    useEffect(() => {
-        const timer = setInterval(() => {
-            if (document.hidden || !repo || !base || loading || !inWorkingTree) return;
-            Fingerprint(repo, base)
-                .then(fp => {
-                    if (fingerprint.current !== null && fp !== fingerprint.current) {
-                        setReloadKey(k => k + 1);
-                    }
-                    fingerprint.current = fp;
-                })
-                .catch(() => {});
-        }, POLL_MS);
-        return () => clearInterval(timer);
-    }, [repo, base, loading, inWorkingTree]);
+    }, [scope]);
 
     useEffect(() => {
-        writeStore('git-tree-compare:last', {repo, base});
-    }, [repo, base]);
+        writeStore('git-tree-compare:last', {repo});
+        if (!repo) return;
+        setRecent(prev => {
+            const next = [repo, ...prev.filter(r => r !== repo)].slice(0, RECENT_LIMIT);
+            writeStore(RECENT_KEY, next);
+            return next;
+        });
+    }, [repo]);
 
     useEffect(() => writeStore('git-tree-compare:sort', sort), [sort]);
     useEffect(() => writeStore('git-tree-compare:split', split), [split]);
@@ -427,7 +449,7 @@ function App() {
     useEffect(() => writeStore('git-tree-compare:ignoreWS', ignoreWS), [ignoreWS]);
 
     useEffect(() => {
-        if (!selected) {
+        if (!selected || !scope) {
             setDiff('');
             return;
         }
@@ -437,17 +459,10 @@ function App() {
         Diff({...scope, fullFile}, selected.path)
             .then(text => !cancelled && setDiff(text))
             .catch(e => !cancelled && setError(String(e)));
-        if (inWorkingTree) RecordHistory(repo, base, selected.path).catch(() => {});
         return () => {
             cancelled = true;
         };
-    }, [selected, repo, base, commit, ignoreWS, fullFile]);
-
-    // The finder lists every file in the working tree, so load the list each time it opens.
-    useEffect(() => {
-        if (!quickOpen || !repo) return;
-        ListFiles(repo).then(setRepoFiles).catch(() => setRepoFiles([]));
-    }, [quickOpen, repo]);
+    }, [selected, scope, fullFile]);
 
     useEffect(() => {
         InstalledEditors().then(list => setEditors(list ?? [])).catch(() => setEditors([]));
@@ -455,7 +470,7 @@ function App() {
 
     useEffect(() => writeStore('git-tree-compare:editor', editorID), [editorID]);
 
-    // Link to this file's diff on the open pull request, when the branch has one.
+    // Link to this file's diff on the open pull request.
     useEffect(() => {
         if (!pr || !selected) {
             setPrFileURL('');
@@ -470,33 +485,52 @@ function App() {
         };
     }, [pr, selected?.path]);
 
-    // An open file belongs to one repository and one comparison.
-    useEffect(() => setEditPath(null), [repo, commit]);
-
-    // Keyboard: move between files, filter, quick open, run, open in editor,
-    // refresh, review, notes, whitespace, split, hunks.
+    // Keyboard: open dialogs, then move between files, filter, review, notes and the rest.
     useEffect(() => {
         function onKey(e: KeyboardEvent) {
             if (picking || landing) return;
+            if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+                e.preventDefault();
+                setPaletteOpen(open => !open);
+                return;
+            }
             if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'p') {
                 e.preventDefault();
-                setQuickOpen(open => !open);
+                if (pr) setQuickOpen(open => !open);
                 return;
             }
             if (e.metaKey || e.ctrlKey || e.altKey) return;
-            if (quickOpen) return;
+            if (quickOpen || paletteOpen) return;
             const target = e.target as HTMLElement;
             const typing = target instanceof HTMLInputElement || target instanceof HTMLSelectElement
                 || target instanceof HTMLTextAreaElement;
-
-            if (e.key === '/' && !typing) {
-                e.preventDefault();
-                filterInput.current?.focus();
+            if (typing) {
                 return;
             }
-            if (typing) return;
+
+            if (e.key === '?') {
+                setHelpOpen(v => !v);
+                return;
+            }
+            if (e.key === 'r') {
+                setPollTick(t => t + 1);
+                return;
+            }
+            if (e.key === 't') {
+                setCmdOpen(v => !v);
+                return;
+            }
+            if (e.key === 'Escape' && helpOpen) {
+                setHelpOpen(false);
+                return;
+            }
+            if (!pr) return;
 
             switch (e.key) {
+                case '/':
+                    e.preventDefault();
+                    filterInput.current?.focus();
+                    return;
                 case 'ArrowDown':
                 case 'ArrowUp': {
                     if (!files.length) return;
@@ -510,26 +544,16 @@ function App() {
                     return;
                 }
                 case 'Escape':
-                    if (helpOpen) setHelpOpen(false);
-                    else if (picked.length) setPicked([]);
+                    if (picked.length) setPicked([]);
                     return;
-                case '?':
-                    setHelpOpen(v => !v);
+                case 'p':
+                    closeReview();
                     return;
                 case 'o':
                     if (selected && selected.status !== 'D' && defaultEditor) openIn(defaultEditor);
                     return;
-                case 'e':
-                    if (selected && inWorkingTree && selected.status !== 'D') setEditPath(selected.path);
-                    return;
-                case 'r':
-                    setReloadKey(k => k + 1);
-                    return;
                 case 'x':
-                    if (inWorkingTree) {
-                        const targets = picked.length ? picked : selected ? [selected.path] : [];
-                        if (targets.length) setReviewedMany(targets);
-                    }
+                    toggleFiles(picked.length ? picked : selected ? [selected.path] : []);
                     return;
                 case 'v':
                     setSplit(s => !s);
@@ -540,8 +564,8 @@ function App() {
                 case 'n':
                     if (selected) setNoteOpen(v => !v);
                     return;
-                case 't':
-                    setCmdOpen(v => !v);
+                case 'c':
+                    toggleComments();
                     return;
                 case '[':
                 case ']':
@@ -558,10 +582,6 @@ function App() {
         if (!hunks.length) return;
         hunk.current = Math.min(Math.max(hunk.current + step, 0), hunks.length - 1);
         hunks[hunk.current].scrollIntoView({block: 'start', behavior: 'smooth'});
-    }
-
-    function toggleReviewed(path: string) {
-        setReviewedMany([path]);
     }
 
     // Replaces the app with the latest release and restarts it. On success the app quits itself.
@@ -592,9 +612,10 @@ function App() {
     }
 
     async function loadComments() {
+        if (!pr) return;
         setCommentsLoading(true);
         try {
-            setDiscussion(await PRComments(repo));
+            setDiscussion(await PRComments(repo, pr.id));
         } catch (e) {
             setError(String(e));
         } finally {
@@ -602,49 +623,15 @@ function App() {
         }
     }
 
-    // Opens a commented file's diff. Files outside this comparison have no diff to show.
+    // Opens a commented file's diff.
     function openCommentFile(path: string) {
         const file = changes.find(c => c.path === path);
         if (!file) {
-            showFlash(`${path} is not changed in this comparison. Pick the PR base to see it.`);
+            showFlash(`${path} is no longer changed in this pull request.`);
             return;
         }
         setSelected(file);
         setCommentsOpen(false);
-    }
-
-    // Marks the reviewed files as viewed on the open pull request.
-    async function syncReviewed() {
-        const paths = Object.keys(reviewed);
-        if (!paths.length) {
-            showFlash('No reviewed files to sync yet.');
-            return;
-        }
-        try {
-            const r = await SyncReviewed(repo, paths);
-            const parts = [`marked ${r.marked} viewed on PR #${r.number}`];
-            if (r.alreadyDone) parts.push(`${r.alreadyDone} already viewed`);
-            if (r.notInPR) parts.push(`${r.notInPR} not changed in the PR`);
-            showFlash(parts.join(', ') + '.');
-        } catch (e) {
-            setError(String(e));
-        }
-    }
-
-    // Marks every path reviewed, or unmarks them all when they already are.
-    function setReviewedMany(paths: string[]) {
-        const current = reviewedRef.current;
-        if (paths.every(p => current[p])) {
-            const next = {...current};
-            paths.forEach(p => delete next[p]);
-            updateReviewed(next);
-            return;
-        }
-        // Stamp the files now; a later save resets the mark.
-        const todo = paths.filter(p => !current[p]);
-        Stamps(repo, todo).then(stamps => {
-            updateReviewed({...reviewedRef.current, ...stamps});
-        });
     }
 
     // Click selects one file; Cmd/Ctrl-click toggles it in the selection; Shift-click selects a range.
@@ -680,38 +667,6 @@ function App() {
         });
     }
 
-    function switchWorktree(path: string) {
-        if (path !== repo) setRepo(path);
-    }
-
-    async function openHistory() {
-        setHistory(null);
-        try {
-            setHistory(await History());
-        } catch (e) {
-            setError(String(e));
-            setHistory([]);
-        }
-    }
-
-    function restore(item: HistoryItem) {
-        wantFile.current = item.file;
-        setHistory(null);
-        if (item.repo !== repo) {
-            // The repo's own load picks the base, and uses this one when it is still there.
-            wantBase.current = item.base;
-            setRepo(item.repo);
-            return;
-        }
-        if (item.base === base) {
-            setReloadKey(k => k + 1);
-        } else if (refs.includes(item.base)) {
-            setBase(item.base);
-        } else {
-            showFlash(`Base ${shortBase(item.base)} is not in this repository anymore. Keeping ${shortBase(base)}.`);
-        }
-    }
-
     // The editor used by the main button, and by the o key: the saved choice if it is still installed.
     const defaultEditor = editors.find(e => e.id === editorID)?.id ?? editors[0]?.id ?? '';
 
@@ -736,20 +691,6 @@ function App() {
         setMenu({x: e.clientX, y: e.clientY, path: file.path});
     }
 
-    // Restores the menu's files to the base. Local edits in them are lost, so the menu asks first.
-    async function revertMenuPaths() {
-        try {
-            const result = await RevertToBase(scope, menuPaths);
-            setPicked([]);
-            setReloadKey(k => k + 1);
-            const parts = [`Reverted ${result.reverted.length} file${result.reverted.length === 1 ? '' : 's'}.`];
-            if (result.skipped.length) parts.push(`Skipped ${result.skipped.length} added, untracked or renamed.`);
-            showFlash(parts.join(' '));
-        } catch (e) {
-            setError(`Could not revert: ${e}`);
-        }
-    }
-
     async function copyMenuPaths() {
         const text = menuPaths.join('\n');
         try {
@@ -760,17 +701,10 @@ function App() {
         }
     }
 
-    async function openPR() {
-        try {
-            await OpenPR(repo);
-        } catch (e) {
-            setError(`Could not open the PR: ${e}`);
-        }
-    }
-
     async function exportPatch() {
+        if (!scope || !pr) return;
         try {
-            const path = await ExportPatch(scope);
+            const path = await ExportPatch(scope, pr.number);
             if (path) showFlash(`Saved ${path}`);
         } catch (e) {
             setError(`Could not save the patch: ${e}`);
@@ -778,14 +712,8 @@ function App() {
     }
 
     async function copySummary() {
-        const md = buildMarkdown({
-            repo,
-            base,
-            scopeLabel: inWorkingTree ? 'working tree' : `commit ${commits.find(c => c.hash === commit)?.short ?? ''}`,
-            files: changes,
-            reviewed,
-            notes,
-        });
+        if (!pr) return;
+        const md = buildMarkdown({title: `#${pr.number} ${pr.title}`, files: changes, reviewed, notes});
         try {
             await navigator.clipboard.writeText(md);
             showFlash('Summary copied as Markdown');
@@ -794,107 +722,27 @@ function App() {
         }
     }
 
+    const commands: Command[] = [
+        ...(pr ? [
+            {id: 'back', label: 'Back to pull requests', hint: 'p', run: closeReview},
+            {id: 'file', label: 'Go to file', hint: '⌘P', run: () => setQuickOpen(true)},
+            {id: 'comments', label: 'Show comments', hint: 'c', run: toggleComments},
+            {id: 'github', label: 'Open pull request on GitHub', run: () => BrowserOpenURL(pr.url)},
+            {id: 'ws', label: ignoreWS ? 'Show whitespace changes' : 'Ignore whitespace changes', hint: 'b', run: () => setIgnoreWS(v => !v)},
+            {id: 'sort', label: sort === 'name' ? 'Sort files by size of change' : 'Sort files by name', run: () => setSort(s => (s === 'name' ? 'size' : 'name'))},
+            {id: 'run', label: 'Run a command', hint: 't', run: () => setCmdOpen(v => !v)},
+            {id: 'summary', label: 'Copy summary as Markdown', run: copySummary},
+            {id: 'patch', label: 'Export patch', run: exportPatch},
+        ] : []),
+        {id: 'refresh', label: 'Refresh', hint: 'r', run: () => setPollTick(t => t + 1)},
+        {id: 'terminal', label: termOpen ? 'Hide terminal' : 'Show terminal', hint: '⌃`', run: () => setTermOpen(v => !v)},
+        {id: 'repo', label: 'Open another repository', run: chooseRepo},
+        {id: 'keys', label: 'Keyboard shortcuts', hint: '?', run: () => setHelpOpen(true)},
+    ];
+
     return (
         <div id="app">
-            <header className="toolbar">
-                <Button onClick={chooseRepo}>Open repo…</Button>
-                <div className="repo" title={repo}>{repo ? basename(repo) : 'No repository'}</div>
-                {worktrees.length > 1 && (
-                    <Combobox
-                        value={repo}
-                        onChange={switchWorktree}
-                        options={worktrees.map(w => ({value: w.path, label: worktreeLabel(w)}))}
-                        title="Worktree"
-                        ariaLabel="Worktree"
-                    />
-                )}
-                <div className="spacer"/>
-                <div className="flex shrink-0 items-center gap-1.5 whitespace-nowrap text-[12px] text-[var(--text-dim)]">
-                    <span>Compare against</span>
-                    <Combobox
-                        value={base}
-                        onChange={setBase}
-                        options={refs.map(r => ({value: r, label: refLabels[r] ?? r}))}
-                        disabled={!refs.length}
-                        ariaLabel="Compare against"
-                        align="right"
-                    />
-                </div>
-                <label className="flex items-center gap-1.5 text-[12px] text-[var(--text-dim)]">
-                    Scope
-                    <Select value={commit} onChange={e => setCommit(e.target.value)} disabled={!repo}>
-                        <option value="">Working tree</option>
-                        {commits.map(c => (
-                            <option key={c.hash} value={c.hash}>{c.short} {c.subject}</option>
-                        ))}
-                    </Select>
-                </label>
-                <Button onClick={() => setQuickOpen(true)} disabled={!files.length} title="Go to file (⌘P)">Go to file <Kbd>⌘P</Kbd></Button>
-                <Button onClick={openHistory} disabled={!!history} title="Past comparisons">History</Button>
-                <Button size="icon"
-                    onClick={() => setReloadKey(k => k + 1)}
-                    disabled={!repo || loading}
-                    title="Refresh (r)"
-                    aria-label="Refresh"
-                >↻</Button>
-            </header>
-
-            {updateBanner}
-
-            {pr && (
-                <PRBanner
-                    pr={pr}
-                    newCommits={newPrCommits}
-                    onOpen={openPR}
-                    onSeen={markPrSeen}
-                    unresolved={unresolvedCount}
-                    onSync={inWorkingTree ? syncReviewed : undefined}
-                    onComments={toggleComments}
-                />
-            )}
-
-            {changes.length > 0 && (
-                <div className="summary">
-                    <span>{changes.length} changed</span>
-                    <span className="added">+{totals.added}</span>
-                    <span className="deleted">−{totals.deleted}</span>
-                    {(['A', 'M', 'D', 'R', 'U'] as const).filter(s => changes.some(c => c.status === s)).map(s => (
-                        <span key={s} className={`chip status-${s}`}>{s} {changes.filter(c => c.status === s).length}</span>
-                    ))}
-                    {inWorkingTree && <span className="reviewed-count">{reviewedCount}/{changes.length} reviewed</span>}
-                    {currentWorktree?.branch && <span className="hint">on {currentWorktree.branch}</span>}
-                    <label className="check">
-                        <input type="checkbox" checked={ignoreWS} onChange={e => setIgnoreWS(e.target.checked)}/>
-                        Ignore whitespace (b)
-                    </label>
-                    <label className="ml-auto flex items-center gap-1.5 text-[12px] text-[var(--text-dim)]">
-                        Sort
-                        <Select value={sort} onChange={e => setSort(e.target.value as SortMode)}>
-                            <option value="name">name</option>
-                            <option value="size">changes</option>
-                        </Select>
-                    </label>
-                    <Button onClick={() => setCmdOpen(v => !v)} title="Run a command (t)">Run</Button>
-                    <Button onClick={copySummary} title="Copy the file list as Markdown">Copy summary</Button>
-                    <Button onClick={exportPatch} title="Save the diff as a .patch file">Export patch</Button>
-                </div>
-            )}
-
-            {inWorkingTree && prBase && !prBase.fetched && prBase.name && (
-                <div className="warn" role="status">
-                    <span>⚠ The PR base {prBase.name} is not in this clone, so the comparison may be out of date.</span>
-                    <code>git fetch origin {prBase.name}</code>
-                </div>
-            )}
-
-            {inWorkingTree && conflicts.length > 0 && (
-                <div className="warn" role="status">
-                    <span>⚠ {conflicts.length} file{conflicts.length > 1 ? 's' : ''} would conflict with {refLabels[base] ?? base} if merged.</span>
-                    <Button onClick={() => setOnlyConflicts(v => !v)}>
-                        {onlyConflicts ? 'Show all files' : 'Show only conflicts'}
-                    </Button>
-                </div>
-            )}
+            {updateBanner && !landing && updateBanner}
 
             {flash && <div className="flash" role="status">{flash}</div>}
 
@@ -924,31 +772,27 @@ function App() {
                     x={menu.x}
                     y={menu.y}
                     paths={menuPaths}
-                    reviewable={inWorkingTree}
                     allReviewed={menuAllReviewed}
                     onOpenInEditor={path => openIn(defaultEditor, path)}
                     onCopyPaths={copyMenuPaths}
-                    onToggleReviewed={() => setReviewedMany(menuPaths)}
-                    onRevert={revertMenuPaths}
+                    onToggleReviewed={() => toggleFiles(menuPaths)}
                     onClose={() => setMenu(null)}
                 />
             )}
 
-            {history && <HistoryPanel items={history} onPick={restore} onClose={() => setHistory(null)}/>}
-
             {quickOpen && (
                 <QuickOpen
-                    paths={finderPaths}
-                    changed={changedStatus}
+                    files={changes}
                     onClose={() => setQuickOpen(false)}
                     onPick={path => {
                         const file = changes.find(c => c.path === path);
                         if (file) setSelected(file);
-                        else setEditPath(path);
                         setQuickOpen(false);
                     }}
                 />
             )}
+
+            {paletteOpen && <CommandPalette commands={commands} onClose={() => setPaletteOpen(false)}/>}
 
             {picking && (
                 <RepoPicker
@@ -960,115 +804,137 @@ function App() {
                 />
             )}
 
-            <div className="panes">
-                <aside className="tree">
-                    {repo && changes.length > 0 && (
-                        <div className="tree-head">
-                            <input
-                                ref={filterInput}
-                                className="filter"
-                                type="search"
-                                placeholder="Filter files (/)"
-                                value={filter}
-                                onChange={e => setFilter(e.target.value)}
-                            />
-                            {selected && inWorkingTree && (
-                                <Button
-onClick={() => toggleReviewed(selected.path)}
-                                    title="Mark reviewed (x)"
-                                >
-                                    {reviewed[selected.path] ? '☑ Reviewed' : '☐ Reviewed'}
-                                </Button>
+            {!landing && !pr && (
+                <PRList
+                    repo={repo}
+                    prs={prs}
+                    loading={prsLoading}
+                    error={prsError}
+                    reviewedCount={p => storedReviewedCount(repo, p)}
+                    active={!picking && !paletteOpen && !helpOpen && openNumber === null}
+                    onOpen={p => setOpenNumber(p.number)}
+                    onRefresh={() => setPollTick(t => t + 1)}
+                    onChangeRepo={chooseRepo}
+                />
+            )}
+
+            {pr && (
+                <>
+                    <header className="review-bar">
+                        <Button onClick={closeReview} title="All pull requests (p)">Pull requests</Button>
+                        <div className="review-title">
+                            <span className="review-name"><span className="pr-num">{pr.number}</span> {pr.title}</span>
+                            <span className="review-sub">
+                                {pr.author} wants {pr.headRefName} in {pr.baseRefName}
+                                {pr.mergeable === 'CONFLICTING' && <span className="pr-tag bad">Conflicts</span>}
+                                {pr.isDraft && <span className="pr-tag">Draft</span>}
+                            </span>
+                        </div>
+                        {unsynced.size > 0 && (
+                            <span className="sync-note" role="status" title={syncError}>
+                                {unsynced.size} not on GitHub yet, retrying
+                            </span>
+                        )}
+                        <ReviewMeter done={reviewedCount} total={changes.length}/>
+                        <Button onClick={toggleComments} aria-pressed={commentsOpen} title="Review comments (c)">
+                            Comments{unresolvedCount > 0 ? ` ${unresolvedCount}` : ''}
+                        </Button>
+                        <Button onClick={() => setPaletteOpen(true)} title="All commands">Commands <Kbd>⌘K</Kbd></Button>
+                    </header>
+
+                    <div className="panes">
+                        <aside className="tree">
+                            {changes.length > 0 && (
+                                <div className="tree-head">
+                                    <input
+                                        ref={filterInput}
+                                        className="filter"
+                                        type="search"
+                                        aria-label="Filter files"
+                                        placeholder="Filter files (/)"
+                                        value={filter}
+                                        onChange={e => setFilter(e.target.value)}
+                                    />
+                                </div>
                             )}
-                        </div>
-                    )}
-                    {repo && changes.length > 0 && inWorkingTree && picked.length > 1 && (
-                        <div className="tree-select" role="status">
-                            <span>{picked.length} selected</span>
-                            <Button onClick={() => setReviewedMany(picked)}>
-                                {picked.every(p => reviewed[p]) ? 'Unmark all' : 'Mark all reviewed'}
-                            </Button>
-                            <Button onClick={() => setPicked([])} title="Clear selection (Esc)">Clear</Button>
-                        </div>
-                    )}
-                    {!repo && (
-                        <Empty title="Pick a repository" hint="Compare its working tree against a branch, tag or commit.">
-                            <Button className="mt-1" onClick={chooseRepo}>Open repo…</Button>
-                        </Empty>
-                    )}
-                    {repo && loading && changes.length === 0 && <div className="empty">Loading…</div>}
-                    {repo && !loading && changes.length === 0 && (
-                        <Empty title="No changes" hint={base ? `Nothing differs from ${base}.` : 'Pick a base to compare against.'}/>
-                    )}
-                    {repo && changes.length > 0 && visibleChanges.length === 0 && (
-                        <Empty title="No matches" hint={`Nothing matches "${filter}".`}/>
-                    )}
-                    {tree.length > 0 && (
-                        <TreeList
-                            nodes={tree}
-                            selectedPath={selected?.path}
-                            picked={pickedSet}
-                            collapsed={collapsed}
-                            reviewed={inWorkingTree ? reviewed : {}}
-                            notes={notes}
-                            comments={commentCounts}
-                            conflicts={inWorkingTree ? conflictSet : new Set()}
-                            onToggle={toggleFolder}
-                            onToggleReviewed={toggleReviewed}
-                            onPick={pickFile}
-                            onContextMenu={openFileMenu}
-                        />
-                    )}
-                </aside>
-                <main className="diff">
-                    {commentsOpen && (
-                        <CommentsPanel
-                            discussion={discussion}
-                            loading={commentsLoading}
-                            onOpenFile={openCommentFile}
-                            onOpenURL={BrowserOpenURL}
-                            onRefresh={loadComments}
-                            onClose={() => setCommentsOpen(false)}
-                        />
-                    )}
-                    {cmdOpen && (
-                        <CommandPanel
-                            repo={repo}
-                            paths={visibleChanges.map(c => c.path)}
-                            onClose={() => setCmdOpen(false)}
-                        />
-                    )}
-                    {editPath && repo && inWorkingTree
-                        ? <EditorPanel
-                            key={editPath}
-                            repo={repo}
-                            path={editPath}
-                            onSaved={() => setReloadKey(k => k + 1)}
-                            onClose={() => setEditPath(null)}
-                        />
-                        : selected
-                        ? <DiffPanel
-                            file={selected}
-                            text={diff}
-                            split={split}
-                            note={notes[selected.path] ?? ''}
-                            noteOpen={noteOpen}
-                            onToggleNote={() => setNoteOpen(v => !v)}
-                            onNote={text => updateNote(selected.path, text)}
-                            onToggleSplit={() => setSplit(s => !s)}
-                            fullFile={fullFile}
-                            onToggleFullFile={() => setFullFile(v => !v)}
-                            editors={editors}
-                            defaultEditor={defaultEditor}
-                            onOpenIn={openIn}
-                            prFileURL={prFileURL}
-                            onEdit={inWorkingTree && selected.status !== 'D' ? () => setEditPath(selected.path) : undefined}
-                            threads={fileThreads}
-                            onOpenURL={BrowserOpenURL}
-                        />
-                        : <Empty title="No file selected" hint="Choose a file in the tree to see its diff."/>}
-                </main>
-            </div>
+                            {picked.length > 1 && (
+                                <div className="tree-select" role="status">
+                                    <span>{picked.length} selected</span>
+                                    <Button onClick={() => toggleFiles(picked)}>
+                                        {picked.every(p => reviewed[p]) ? 'Unmark all' : 'Mark all reviewed'}
+                                    </Button>
+                                    <Button onClick={() => setPicked([])} title="Clear selection (Esc)">Clear</Button>
+                                </div>
+                            )}
+                            {loading && changes.length === 0 && <div className="empty">Fetching pull request…</div>}
+                            {!loading && target && changes.length === 0 && (
+                                <Empty title="No changed files" hint="This pull request changes nothing."/>
+                            )}
+                            {changes.length > 0 && visibleChanges.length === 0 && (
+                                <Empty title="No matches" hint={`Nothing matches "${filter}".`}/>
+                            )}
+                            {tree.length > 0 && (
+                                <TreeList
+                                    nodes={tree}
+                                    selectedPath={selected?.path}
+                                    picked={pickedSet}
+                                    collapsed={collapsed}
+                                    reviewed={reviewed}
+                                    notes={notes}
+                                    comments={commentCounts}
+                                    changedSinceReview={changedSinceReview}
+                                    unsynced={unsynced}
+                                    onToggle={toggleFolder}
+                                    onToggleReviewed={path => toggleFiles([path])}
+                                    onPick={pickFile}
+                                    onContextMenu={openFileMenu}
+                                />
+                            )}
+                        </aside>
+                        <main className="diff">
+                            {commentsOpen && (
+                                <CommentsPanel
+                                    discussion={discussion}
+                                    loading={commentsLoading}
+                                    onOpenFile={openCommentFile}
+                                    onOpenURL={BrowserOpenURL}
+                                    onRefresh={loadComments}
+                                    onClose={() => setCommentsOpen(false)}
+                                />
+                            )}
+                            {cmdOpen && (
+                                <CommandPanel
+                                    repo={repo}
+                                    paths={visibleChanges.map(c => c.path)}
+                                    onClose={() => setCmdOpen(false)}
+                                />
+                            )}
+                            {selected
+                                ? <DiffPanel
+                                    file={selected}
+                                    text={diff}
+                                    split={split}
+                                    reviewed={!!reviewed[selected.path]}
+                                    onToggleReviewed={() => toggleFiles([selected.path])}
+                                    note={notes[selected.path] ?? ''}
+                                    noteOpen={noteOpen}
+                                    onToggleNote={() => setNoteOpen(v => !v)}
+                                    onNote={text => updateNote(selected.path, text)}
+                                    onToggleSplit={() => setSplit(s => !s)}
+                                    fullFile={fullFile}
+                                    onToggleFullFile={() => setFullFile(v => !v)}
+                                    editors={editors}
+                                    defaultEditor={defaultEditor}
+                                    onOpenIn={openIn}
+                                    prFileURL={prFileURL}
+                                    threads={fileThreads}
+                                    onOpenURL={BrowserOpenURL}
+                                />
+                                : <Empty title="No file selected" hint="Choose a file in the tree to see its diff."/>}
+                        </main>
+                    </div>
+                </>
+            )}
 
             {repo && termStarted && (
                 <div className="terminal-dock" hidden={!termOpen}>
@@ -1077,6 +943,13 @@ onClick={() => toggleReviewed(selected.path)}
             )}
         </div>
     );
+}
+
+// storedReviewedCount reads a pull request's progress from what was saved the last time it was open.
+function storedReviewedCount(repo: string, pr: PR): number {
+    const saved = readStore<ReviewRecord>(reviewKey(repo, pr.number), emptyRecord);
+    const paths = new Set([...Object.keys(saved.states), ...Object.keys(saved.pending)]);
+    return [...paths].filter(p => isReviewed(saved, p)).length;
 }
 
 function Empty({title, hint, children}: {title: string; hint?: string; children?: ReactNode}) {
@@ -1089,32 +962,6 @@ function Empty({title, hint, children}: {title: string; hint?: string; children?
     );
 }
 
-function HistoryPanel({items, onPick, onClose}: {
-    items: HistoryItem[];
-    onPick: (item: HistoryItem) => void;
-    onClose: () => void;
-}) {
-    return (
-        <div className="history" role="dialog" aria-label="Past comparisons">
-            <div className="history-head">
-                <span>Past comparisons</span>
-                <Button size="icon"  onClick={onClose} aria-label="Close">×</Button>
-            </div>
-            {items.length === 0 && <div className="empty-hint">Nothing yet. Open a file to start history.</div>}
-            <ul>
-                {items.map(item => (
-                    <li key={`${item.repo}\u0000${item.base}`}>
-                        <button className="history-item" onClick={() => onPick(item)}>
-                            <span className="history-main">{basename(item.repo)} vs {item.base}</span>
-                            <span className="history-sub">{item.file || 'no file'} · {formatTime(item.openedAt)}</span>
-                        </button>
-                    </li>
-                ))}
-            </ul>
-        </div>
-    );
-}
-
 type TreeProps = {
     selectedPath?: string;
     picked: Set<string>;
@@ -1122,7 +969,8 @@ type TreeProps = {
     reviewed: Record<string, string>;
     notes: Record<string, string>;
     comments: Record<string, number>;
-    conflicts: Set<string>;
+    changedSinceReview: Set<string>;
+    unsynced: Set<string>;
     onToggle: (path: string) => void;
     onToggleReviewed: (path: string) => void;
     onPick: (file: FileChange, e: ReactMouseEvent) => void;
@@ -1166,7 +1014,8 @@ function TreeItem(props: TreeProps & {node: TreeNode; depth: number}) {
                     {rest.comments[file.path] > 0 && (
                         <span className="cmt-count" title="Open review comments on GitHub">{rest.comments[file.path]}</span>
                     )}
-                    {rest.conflicts.has(file.path) && <span className="conflict" title="Conflicts with base">⚠</span>}
+                    {rest.changedSinceReview.has(file.path) && <span className="changed-tag" title="Changed by a push after you reviewed it">changed</span>}
+                    {rest.unsynced.has(file.path) && <span className="unsynced" title="Not on GitHub yet, retrying">●</span>}
                     <span className="counts"><span className="added">+{file.added}</span> <span className="deleted">−{file.deleted}</span></span>
                 </div>
             </li>
@@ -1191,7 +1040,8 @@ function TreeItem(props: TreeProps & {node: TreeNode; depth: number}) {
                     reviewed={rest.reviewed}
                     notes={rest.notes}
                     comments={rest.comments}
-                    conflicts={rest.conflicts}
+                    changedSinceReview={rest.changedSinceReview}
+                    unsynced={rest.unsynced}
                     onToggle={rest.onToggle}
                     onToggleReviewed={rest.onToggleReviewed}
                     onPick={rest.onPick}
@@ -1206,6 +1056,8 @@ function DiffPanel(props: {
     file: FileChange;
     text: string;
     split: boolean;
+    reviewed: boolean;
+    onToggleReviewed: () => void;
     note: string;
     noteOpen: boolean;
     onToggleNote: () => void;
@@ -1217,7 +1069,6 @@ function DiffPanel(props: {
     defaultEditor: string;
     onOpenIn: (id: string) => void;
     prFileURL: string;
-    onEdit?: () => void;
     threads: PRThread[];
     onOpenURL: (url: string) => void;
 }) {
@@ -1242,6 +1093,9 @@ function DiffPanel(props: {
                     <div className="diff-path">{file.path}</div>
                     {file.oldPath && <div className="diff-old">renamed from {file.oldPath}</div>}
                 </div>
+                <Button className="review-toggle" aria-pressed={props.reviewed} onClick={props.onToggleReviewed} title="Mark reviewed here and on GitHub (x)">
+                    {props.reviewed ? 'Reviewed' : 'Mark reviewed'} <Kbd>x</Kbd>
+                </Button>
                 <Button onClick={props.onToggleNote} title="Note (n)">{noteOpen ? 'Hide note' : 'Note'}</Button>
                 <Button onClick={props.onToggleSplit} title="Toggle split view (v)">
                     {split ? 'Unified' : 'Split'}
@@ -1253,7 +1107,6 @@ function DiffPanel(props: {
                 >
                     {props.fullFile ? 'Changes only' : 'Full file'}
                 </Button>
-                {props.onEdit && <Button onClick={props.onEdit} title="Edit the file (e)">Edit</Button>}
                 {props.prFileURL && (
                     <Button onClick={() => props.onOpenURL(props.prFileURL)} title="Open this file's diff on the pull request">Open on GitHub</Button>
                 )}
@@ -1418,33 +1271,26 @@ const STATUS_LABEL: Record<string, string> = {
     M: 'Modified',
     D: 'Deleted',
     R: 'Renamed',
-    U: 'Untracked',
 };
-
-function worktreeLabel(w: WorktreeItem) {
-    const name = w.branch || (w.detached ? `detached ${w.head.slice(0, 7)}` : w.head.slice(0, 7));
-    return `${basename(w.path)} · ${name}`;
-}
-
-// shortBase shortens a full commit id for messages; branch names are returned as they are.
-function shortBase(ref: string): string {
-    return /^[0-9a-f]{40}$/.test(ref) ? ref.slice(0, 7) : ref;
-}
 
 // The shortcut list, shown with ? and kept in step with the key handler above.
 const SHORTCUT_GROUPS: {title: string; rows: [string, string][]}[] = [
+    {title: 'Pull requests', rows: [
+        ['↑ ↓', 'Move through the list'],
+        ['Enter', 'Open the pull request'],
+        ['p', 'Back to all pull requests'],
+        ['c', 'Show comments'],
+    ]},
     {title: 'Files', rows: [
         ['↑ ↓', 'Previous or next file'],
-        ['/', 'Filter files'],
-        ['⌘P', 'Quick open'],
+        ['/', 'Filter'],
+        ['⌘P', 'Go to file'],
         ['o', 'Open file in the default editor'],
-        ['e', 'Edit the file (working tree)'],
-        ['⌘S', 'Save the file being edited'],
     ]},
-    {title: 'Selecting', rows: [
+    {title: 'Reviewing', rows: [
+        ['x', 'Mark reviewed here and on GitHub, then go to the next file'],
         ['⌘-click', 'Add or remove a file from the selection'],
         ['⇧-click', 'Select a range of files'],
-        ['x', 'Mark the selection reviewed (or unmark)'],
         ['Esc', 'Clear the selection'],
     ]},
     {title: 'Diff', rows: [
@@ -1454,6 +1300,7 @@ const SHORTCUT_GROUPS: {title: string; rows: [string, string][]}[] = [
         ['n', 'Note for the file'],
     ]},
     {title: 'App', rows: [
+        ['⌘K', 'All commands'],
         ['t', 'Run a command'],
         ['r', 'Refresh'],
         ['?', 'Show or hide this list'],
@@ -1486,32 +1333,8 @@ function ShortcutsSheet({onClose}: {onClose: () => void}) {
     );
 }
 
-// baseLabel names the pull request's base in the picker and warnings.
-function baseLabel(pb: main.PRBase): string {
-    return pb.fetched ? `${pb.name} · PR base ${pb.commit.slice(0, 7)}` : `${pb.name} · PR base not fetched`;
-}
-
 function parentOf(path: string) {
     return path.replace(/[\\/][^\\/]*$/, '');
-}
-
-// recentRepos returns each repository once, newest first.
-function recentRepos(items: HistoryItem[]): string[] {
-    const seen = new Set<string>();
-    for (const item of items) seen.add(item.repo);
-    return [...seen].slice(0, 8);
-}
-
-function formatTime(iso: string) {
-    const d = new Date(iso);
-    return isNaN(d.getTime()) ? '' : d.toLocaleString();
-}
-
-function sumChanges(changes: FileChange[]) {
-    return changes.reduce(
-        (acc, c) => ({added: acc.added + c.added, deleted: acc.deleted + c.deleted}),
-        {added: 0, deleted: 0},
-    );
 }
 
 // flattenFiles lists the files in the order the tree shows them, skipping the

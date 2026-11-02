@@ -2,90 +2,185 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"os/exec"
+	"strconv"
 	"strings"
 )
 
-// PRInfo is the open pull request for the repository's current branch.
-// Mergeable is MERGEABLE, CONFLICTING, or UNKNOWN as reported by GitHub.
+// prListFields are the pull request fields read from `gh pr list`.
+const prListFields = "id,number,title,url,author,headRefName,headRefOid,baseRefName,isDraft,additions,deletions,changedFiles,updatedAt,reviewDecision,mergeable"
+
+// prListLimit caps how many open pull requests are listed.
+const prListLimit = 100
+
+// PR groups, in the order the list shows them.
+const (
+	groupRequested = "requested" // waiting for the viewer's review
+	groupMine      = "mine"      // opened by the viewer
+	groupOther     = "other"
+)
+
+// PRInfo is one open pull request. Mergeable is MERGEABLE, CONFLICTING, or UNKNOWN as reported by GitHub.
 type PRInfo struct {
-	ID        string `json:"id"`
-	Number    int    `json:"number"`
-	Title     string `json:"title"`
-	URL       string `json:"url"`
-	BaseRef   string `json:"baseRefName"`
-	HeadOID   string `json:"headRefOid"`
-	BaseOID   string `json:"baseRefOid"`
-	Mergeable string `json:"mergeable"`
-	State     string `json:"state"`
+	ID             string `json:"id"`
+	Number         int    `json:"number"`
+	Title          string `json:"title"`
+	URL            string `json:"url"`
+	Author         string `json:"author"`
+	HeadRef        string `json:"headRefName"`
+	HeadOID        string `json:"headRefOid"`
+	BaseRef        string `json:"baseRefName"`
+	IsDraft        bool   `json:"isDraft"`
+	Additions      int    `json:"additions"`
+	Deletions      int    `json:"deletions"`
+	ChangedFiles   int    `json:"changedFiles"`
+	UpdatedAt      string `json:"updatedAt"`
+	ReviewDecision string `json:"reviewDecision"`
+	Mergeable      string `json:"mergeable"`
+	Group          string `json:"group"`
 }
 
-// parsePRInfo reads `gh pr view --json ...` output.
-func parsePRInfo(out []byte) (*PRInfo, error) {
-	var pr PRInfo
-	if err := json.Unmarshal(out, &pr); err != nil {
+// ReviewTarget is the pair of commits a pull request's diff is taken between.
+// Base is the merge base, so the diff matches GitHub's Files tab even when the base branch has moved.
+type ReviewTarget struct {
+	Base string `json:"base"`
+	Head string `json:"head"`
+}
+
+// parsePRList reads `gh pr list --json` output and sorts each pull request into its group.
+func parsePRList(out []byte, viewer string, requested map[int]bool) ([]PRInfo, error) {
+	var raw []struct {
+		PRInfo
+		Author *struct {
+			Login string `json:"login"`
+		} `json:"author"`
+	}
+	if err := json.Unmarshal(out, &raw); err != nil {
 		return nil, err
 	}
-	return &pr, nil
+	prs := make([]PRInfo, 0, len(raw))
+	for _, r := range raw {
+		pr := r.PRInfo
+		pr.Author = "ghost"
+		if r.Author != nil && r.Author.Login != "" {
+			pr.Author = r.Author.Login
+		}
+		switch {
+		case requested[pr.Number]:
+			pr.Group = groupRequested
+		case pr.Author == viewer:
+			pr.Group = groupMine
+		default:
+			pr.Group = groupOther
+		}
+		prs = append(prs, pr)
+	}
+	return prs, nil
 }
 
-// PRStatus returns the open pull request for the current branch, or nil when
-// there is none or gh is missing or not logged in.
-func PRStatus(repo string) *PRInfo {
-	cmd := exec.Command("gh", "pr", "view", "--json", "id,number,title,url,baseRefName,baseRefOid,headRefOid,mergeable,state")
+// runGH runs the gh CLI in repo. Its error message says what GitHub or gh reported.
+func runGH(repo string, args ...string) ([]byte, error) {
+	cmd := exec.Command("gh", args...)
 	cmd.Dir = repo
 	out, err := cmd.Output()
 	if err != nil {
-		return nil
+		if exit, ok := err.(*exec.ExitError); ok && len(exit.Stderr) > 0 {
+			return nil, fmt.Errorf("GitHub said: %s", strings.TrimSpace(string(exit.Stderr)))
+		}
+		return nil, err
 	}
-	pr, err := parsePRInfo(out)
+	return out, nil
+}
+
+// ListPRs returns the repository's open pull requests, grouped for the viewer.
+func ListPRs(repo string) ([]PRInfo, error) {
+	limit := strconv.Itoa(prListLimit)
+	out, err := runGH(repo, "pr", "list", "--state", "open", "--limit", limit, "--json", prListFields)
 	if err != nil {
-		return nil
+		return nil, err
 	}
-	return pr
-}
-
-// OpenPR opens the current branch's pull request in the browser.
-func OpenPR(repo string) error {
-	cmd := exec.Command("gh", "pr", "view", "--web")
-	cmd.Dir = repo
-	return cmd.Start()
-}
-
-// PRBase is the branch a pull request merges into, resolved to the commit to compare against.
-// Fetched is false when that commit is not in this clone; Commit then falls back to a local or
-// remote branch of the same name, which may be behind the pull request's base.
-type PRBase struct {
-	Name    string `json:"name"`
-	Commit  string `json:"commit"`
-	Fetched bool   `json:"fetched"`
-}
-
-// DetectBase resolves the open pull request's base. It prefers the exact commit the pull request
-// merges into, so the comparison matches what GitHub shows.
-func DetectBase(repo string) PRBase {
-	return resolvePRBase(repo, PRStatus(repo))
-}
-
-// resolvePRBase is DetectBase for a known pull request.
-func resolvePRBase(repo string, pr *PRInfo) PRBase {
-	if pr == nil || pr.BaseRef == "" {
-		return PRBase{}
+	login, err := runGH(repo, "api", "user", "--jq", ".login")
+	if err != nil {
+		return nil, err
 	}
-	name := strings.TrimSpace(pr.BaseRef)
-	if oid := strings.TrimSpace(pr.BaseOID); oid != "" && hasCommit(repo, oid) {
-		return PRBase{Name: name, Commit: oid, Fetched: true}
+	asked, err := runGH(repo, "pr", "list", "--state", "open", "--limit", limit, "--search", "review-requested:@me", "--json", "number")
+	if err != nil {
+		return nil, err
 	}
-	for _, candidate := range []string{name, "origin/" + name} {
-		if hasCommit(repo, candidate) {
-			return PRBase{Name: name, Commit: candidate}
+	var numbers []struct {
+		Number int `json:"number"`
+	}
+	if err := json.Unmarshal(asked, &numbers); err != nil {
+		return nil, err
+	}
+	requested := make(map[int]bool, len(numbers))
+	for _, n := range numbers {
+		requested[n.Number] = true
+	}
+	return parsePRList(out, strings.TrimSpace(string(login)), requested)
+}
+
+// CurrentPRNumber returns the open pull request of the checked-out branch, or 0 when it has none.
+func CurrentPRNumber(repo string) int {
+	out, err := runGH(repo, "pr", "view", "--json", "number,state")
+	if err != nil {
+		return 0
+	}
+	var pr struct {
+		Number int    `json:"number"`
+		State  string `json:"state"`
+	}
+	if json.Unmarshal(out, &pr) != nil || pr.State != "OPEN" {
+		return 0
+	}
+	return pr.Number
+}
+
+// remoteForPR picks the remote that hosts the pull request, so forks with an `upstream` work.
+// remotes is `git remote -v` output. It falls back to origin.
+func remoteForPR(remotes, prURL string) string {
+	path := strings.TrimPrefix(prURL, "https://github.com/")
+	slug, _, found := strings.Cut(path, "/pull/")
+	if !found {
+		return "origin"
+	}
+	for _, line := range splitLines(remotes) {
+		name, rest, ok := strings.Cut(line, "\t")
+		if !ok {
+			continue
+		}
+		url, _, _ := strings.Cut(rest, " ")
+		url = strings.TrimSuffix(url, ".git")
+		if strings.HasSuffix(url, "/"+slug) || strings.HasSuffix(url, ":"+slug) {
+			return name
 		}
 	}
-	return PRBase{Name: name}
+	return "origin"
 }
 
-// hasCommit reports whether ref names a commit in the repository.
-func hasCommit(repo, ref string) bool {
-	_, err := runGit(repo, "rev-parse", "--verify", "--quiet", ref+"^{commit}")
-	return err == nil
+// PrepareReview fetches a pull request into refs of the app's own and returns the commits to diff.
+// It reads refs/pull/N/head, which also exists for forks, and never touches the checkout or its branches.
+func PrepareReview(repo string, pr PRInfo) (ReviewTarget, error) {
+	remotes, err := runGit(repo, "remote", "-v")
+	if err != nil {
+		return ReviewTarget{}, err
+	}
+	headRef := fmt.Sprintf("refs/git-tree-compare/pr/%d/head", pr.Number)
+	baseRef := fmt.Sprintf("refs/git-tree-compare/pr/%d/base", pr.Number)
+	if _, err := runGit(repo, "fetch", "--quiet", "--no-tags", remoteForPR(remotes, pr.URL),
+		fmt.Sprintf("+refs/pull/%d/head:%s", pr.Number, headRef),
+		fmt.Sprintf("+refs/heads/%s:%s", pr.BaseRef, baseRef),
+	); err != nil {
+		return ReviewTarget{}, err
+	}
+	head, err := runGit(repo, "rev-parse", headRef)
+	if err != nil {
+		return ReviewTarget{}, err
+	}
+	base, err := runGit(repo, "merge-base", baseRef, headRef)
+	if err != nil {
+		return ReviewTarget{}, err
+	}
+	return ReviewTarget{Base: strings.TrimSpace(base), Head: strings.TrimSpace(head)}, nil
 }
