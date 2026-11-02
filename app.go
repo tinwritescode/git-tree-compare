@@ -197,6 +197,11 @@ func (a *App) InstallUpdate() error {
 	return nil
 }
 
+// SearchFiles searches the pull request's files as they are at head, for the search dialog.
+func (a *App) SearchFiles(repo, head string, paths []string, q SearchQuery) (SearchResult, error) {
+	return SearchFiles(repo, head, paths, q)
+}
+
 // DiffAnchor returns the GitHub anchor for a file on a pull request's Files tab.
 func (a *App) DiffAnchor(path string) string {
 	return DiffAnchor(path)

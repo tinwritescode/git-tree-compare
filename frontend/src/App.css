@@ -1596,6 +1596,122 @@ body {
     font-size: 9px;
 }
 
+/* Search in files: the quick dialog, wider, with a toggle row and results grouped by file. */
+.quick.search {
+    width: min(760px, 94vw);
+    max-height: 70vh;
+}
+
+.search-bar {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding-right: 10px;
+}
+
+.search-bar input {
+    flex: 1;
+    min-width: 0;
+}
+
+.search-toggle {
+    min-width: 32px;
+    height: 28px;
+    padding: 0 6px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: transparent;
+    color: var(--text-dim);
+    font-family: var(--font-mono);
+    font-size: 13px;
+    cursor: pointer;
+}
+
+.search-toggle:hover {
+    background: var(--bg-hover);
+}
+
+.search-toggle[aria-pressed="true"] {
+    border-color: var(--cool);
+    background: var(--cool-soft);
+    color: var(--cool);
+}
+
+.search-error {
+    margin: 0 10px 8px;
+    color: var(--error-text);
+    font-size: 13px;
+}
+
+.quick.search li.search-group {
+    display: block;
+    padding: 0;
+    cursor: default;
+    font-family: var(--font-ui);
+}
+
+.search-group + .search-group {
+    margin-top: 8px;
+}
+
+.search-path {
+    padding: 4px 8px;
+    font-weight: 500;
+}
+
+.search-count {
+    margin-left: 4px;
+    color: var(--text-dim);
+    font-size: 13px;
+}
+
+.quick.search .search-group ul {
+    padding: 0;
+    overflow: visible;
+}
+
+.quick.search .search-group li {
+    gap: 12px;
+}
+
+.search-line {
+    flex: none;
+    width: 40px;
+    color: var(--text-dim);
+    text-align: right;
+}
+
+.search-text {
+    overflow: hidden;
+    white-space: pre;
+    text-overflow: ellipsis;
+}
+
+.search-text mark {
+    border-radius: 2px;
+    background: var(--accent-soft);
+    color: var(--accent-text);
+}
+
+.search-foot {
+    padding: 6px 12px;
+    border-top: 1px solid var(--border);
+    color: var(--text-dim);
+    font-size: 13px;
+}
+
+/* The line a search opened flashes once, so the eye lands on it. */
+.jumped {
+    animation: jumped 1200ms ease-out;
+}
+
+@keyframes jumped {
+    from {
+        box-shadow: inset 3px 0 0 var(--cool);
+        background-color: var(--cool-soft);
+    }
+}
+
 @media (max-width: 760px) {
     .pr-row {
         grid-template-columns: 44px minmax(0, 1fr) 96px;
@@ -1613,5 +1729,10 @@ body {
 @media (prefers-reduced-motion: reduce) {
     .ruler-tick {
         transition: none;
+    }
+
+    .jumped {
+        animation: none;
+        box-shadow: inset 3px 0 0 var(--cool);
     }
 }

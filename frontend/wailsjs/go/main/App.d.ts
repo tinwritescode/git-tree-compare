@@ -38,6 +38,8 @@ export function ResolveRepo(arg1:string):Promise<string>;
 
 export function RunCommand(arg1:string,arg2:string):Promise<main.RunResult>;
 
+export function SearchFiles(arg1:string,arg2:string,arg3:Array<string>,arg4:main.SearchQuery):Promise<main.SearchResult>;
+
 export function SetViewed(arg1:string,arg2:string,arg3:Array<string>,arg4:boolean):Promise<void>;
 
 export function StartTerminal(arg1:string,arg2:number,arg3:number):Promise<void>;

@@ -87,6 +87,7 @@ Press `?` in the app to see this list.
 | `/` | Filter |
 | `⌘K` | All commands |
 | `⌘P` | Go to file |
+| `⇧⌘F` | Search the changed files at the pull request's head |
 | `x` | Mark reviewed here and on GitHub (or unmark) |
 | `⌘`-click | Add or remove a file from the selection |
 | `⇧`-click | Select a range of files |

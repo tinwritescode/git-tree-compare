@@ -21,6 +21,7 @@ import {
 import {BrowserOpenURL, EventsOn} from '../wailsjs/runtime/runtime';
 import {parseDiff, toSplitRows, Line, SplitRow} from './diff';
 import {highlight} from './highlight';
+import {emptyQuery, SearchDialog, type SearchHit, type SearchQuery} from './search-dialog';
 import {paint, type Token} from './syntax';
 import {EditorMenu} from './editor-menu';
 import {Command, CommandPalette, CommandPanel, CommentBody, CommentsPanel, FileMenu, PRDiscussion, PRThread, QuickOpen, UpdateBanner} from './panels';
@@ -88,6 +89,7 @@ function App() {
     const [changes, setChanges] = useState<FileChange[]>([]);
     const [selected, setSelected] = useState<FileChange | null>(null);
     const [diff, setDiff] = useState('');
+    const [diffPath, setDiffPath] = useState(''); // the file the diff text belongs to, which lags a new pick
     const [filter, setFilter] = useState('');
     const [sort, setSort] = useState<SortMode>(() => readStore<SortMode>('git-tree-compare:sort', 'name'));
     const [split, setSplit] = useState(() => readStore('git-tree-compare:split', false));
@@ -104,6 +106,12 @@ function App() {
     const [update, setUpdate] = useState<main.UpdateInfo | null>(null); // a newer release, if one exists
     const [installing, setInstalling] = useState(false);
     const [quickOpen, setQuickOpen] = useState(false);
+    const [searchOpen, setSearchOpen] = useState(false);
+    const [searchQuery, setSearchQuery] = useState<SearchQuery>(emptyQuery); // kept until the pull request closes
+    // A line to scroll to and flash once its file's diff is drawn, set by a search pick.
+    const [jump, setJump] = useState<{path: string; line: number; id: number} | null>(null);
+    // A file shown whole for one visit because a search hit sat outside its diff. The saved setting is untouched.
+    const [tempFull, setTempFull] = useState<string | null>(null);
     const [paletteOpen, setPaletteOpen] = useState(false);
     const [picking, setPicking] = useState(false);
     const [recent, setRecent] = useState<string[]>(() => readStore<string[]>(RECENT_KEY, []));
@@ -276,9 +284,26 @@ function App() {
         }
     }
 
+    useEffect(() => {
+        if (tempFull && selected?.path !== tempFull) setTempFull(null);
+    }, [selected, tempFull]);
+
+    // Searching covers the changed files that still exist at the pull request's head.
+    const searchPaths = useMemo(() => changes.filter(c => c.status !== 'D').map(c => c.path), [changes]);
+
+    function openSearchHit(hit: SearchHit) {
+        const file = changes.find(c => c.path === hit.path);
+        if (!file) return;
+        setSearchOpen(false);
+        setSelected(file);
+        setJump({path: hit.path, line: hit.line, id: Date.now()});
+    }
+
     function closeReview() {
         setOpenNumber(null);
         setTarget(null);
+        setSearchQuery(emptyQuery);
+        setSearchOpen(false);
         setCommentsOpen(false);
         setCmdOpen(false);
         setPicked([]);
@@ -458,13 +483,17 @@ function App() {
         let cancelled = false;
         hunk.current = -1;
         setNoteOpen(false);
-        Diff({...scope, fullFile}, selected.path)
-            .then(text => !cancelled && setDiff(text))
+        Diff({...scope, fullFile: fullFile || tempFull === selected.path}, selected.path)
+            .then(text => {
+                if (cancelled) return;
+                setDiff(text);
+                setDiffPath(selected.path);
+            })
             .catch(e => !cancelled && setError(String(e)));
         return () => {
             cancelled = true;
         };
-    }, [selected, scope, fullFile]);
+    }, [selected, scope, fullFile, tempFull]);
 
     useEffect(() => {
         InstalledEditors().then(list => setEditors(list ?? [])).catch(() => setEditors([]));
@@ -496,13 +525,18 @@ function App() {
                 setPaletteOpen(open => !open);
                 return;
             }
+            if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'f') {
+                e.preventDefault();
+                if (pr) setSearchOpen(open => !open);
+                return;
+            }
             if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'p') {
                 e.preventDefault();
                 if (pr) setQuickOpen(open => !open);
                 return;
             }
             if (e.metaKey || e.ctrlKey || e.altKey) return;
-            if (quickOpen || paletteOpen) return;
+            if (quickOpen || paletteOpen || searchOpen) return;
             const target = e.target as HTMLElement;
             const typing = target instanceof HTMLInputElement || target instanceof HTMLSelectElement
                 || target instanceof HTMLTextAreaElement;
@@ -728,6 +762,7 @@ function App() {
         ...(pr ? [
             {id: 'back', label: 'Back to pull requests', hint: 'p', run: closeReview},
             {id: 'file', label: 'Go to file', hint: '⌘P', run: () => setQuickOpen(true)},
+            {id: 'search', label: 'Search in files', hint: '⇧⌘F', run: () => setSearchOpen(true)},
             {id: 'comments', label: 'Show comments', hint: 'c', run: toggleComments},
             {id: 'github', label: 'Open pull request on GitHub', run: () => BrowserOpenURL(pr.url)},
             {id: 'ws', label: ignoreWS ? 'Show whitespace changes' : 'Ignore whitespace changes', hint: 'b', run: () => setIgnoreWS(v => !v)},
@@ -791,6 +826,18 @@ function App() {
                         if (file) setSelected(file);
                         setQuickOpen(false);
                     }}
+                />
+            )}
+
+            {searchOpen && target && (
+                <SearchDialog
+                    repo={repo}
+                    head={target.head}
+                    paths={searchPaths}
+                    query={searchQuery}
+                    onQuery={setSearchQuery}
+                    onClose={() => setSearchOpen(false)}
+                    onPick={openSearchHit}
                 />
             )}
 
@@ -941,8 +988,10 @@ function App() {
                                     onToggleNote={() => setNoteOpen(v => !v)}
                                     onNote={text => updateNote(selected.path, text)}
                                     onToggleSplit={() => setSplit(s => !s)}
-                                    fullFile={fullFile}
-                                    onToggleFullFile={() => setFullFile(v => !v)}
+                                    fullFile={fullFile || tempFull === selected.path}
+                                    onToggleFullFile={() => (tempFull === selected.path ? setTempFull(null) : setFullFile(v => !v))}
+                                    jump={jump?.path === selected.path && diffPath === selected.path ? jump : null}
+                                    onJumpOutside={() => setTempFull(selected.path)}
                                     editors={editors}
                                     defaultEditor={defaultEditor}
                                     onOpenIn={openIn}
@@ -1091,6 +1140,8 @@ function DiffPanel(props: {
     prFileURL: string;
     threads: PRThread[];
     onOpenURL: (url: string) => void;
+    jump: {line: number; id: number} | null;
+    onJumpOutside: () => void; // the jump line is not in this diff
 }) {
     const {file, text, split, note, noteOpen} = props;
     return (
@@ -1128,19 +1179,29 @@ function DiffPanel(props: {
                     onChange={e => props.onNote(e.target.value)}
                 />
             )}
-            <DiffView text={text} path={file.path} split={split} threads={props.threads} onOpenURL={props.onOpenURL}/>
+            <DiffView
+                text={text}
+                path={file.path}
+                split={split}
+                threads={props.threads}
+                onOpenURL={props.onOpenURL}
+                jump={props.jump}
+                onJumpOutside={props.fullFile ? undefined : props.onJumpOutside}
+            />
         </>
     );
 }
 
 // DiffView draws the file's diff. Review threads sit under their line on the new side.
 // A thread whose line is not in the diff (outdated, or the file changed since) is listed at the top.
-function DiffView({text, path, split, threads, onOpenURL}: {
+function DiffView({text, path, split, threads, onOpenURL, jump, onJumpOutside}: {
     text: string;
     path: string; // picks the language for syntax colours
     split: boolean;
     threads: PRThread[];
     onOpenURL: (url: string) => void;
+    jump: {line: number; id: number} | null; // a new-side line to scroll to and flash
+    onJumpOutside?: () => void; // asks for the whole file when the line is not in this diff
 }) {
     const lines = useMemo(() => parseDiff(text), [text]);
     const rows = useMemo(() => (split ? toSplitRows(lines) : []), [lines, split]);
@@ -1160,6 +1221,22 @@ function DiffView({text, path, split, threads, onOpenURL}: {
         return map;
     }, [threads]);
     const visibleLines = useMemo(() => new Set(lines.map(l => l.newNo)), [lines]);
+
+    // Each jump runs once: scroll its line to the middle and flash it, or ask for the whole file.
+    const jumped = useRef(0);
+    useEffect(() => {
+        if (!jump || jumped.current === jump.id || !lines.length) return;
+        const row = document.querySelector<HTMLElement>(`.diff-body [data-new="${jump.line}"]`);
+        if (!row) {
+            if (!visibleLines.has(jump.line) && onJumpOutside) onJumpOutside();
+            return;
+        }
+        jumped.current = jump.id;
+        row.scrollIntoView({block: 'center'});
+        row.classList.remove('jumped');
+        void row.offsetWidth; // restart the flash when the same line is picked again
+        row.classList.add('jumped');
+    }, [jump, lines, split, visibleLines, onJumpOutside]);
     const orphans = threads.filter(t => !visibleLines.has(t.line));
 
     function threadsAt(newNo?: number) {
@@ -1244,7 +1321,7 @@ function InlineThread({thread, onOpenURL}: {thread: PRThread; onOpenURL: (url: s
 function UnifiedLine({line, tokens}: {line: Line; tokens?: Token[]}) {
     const sign = line.kind === 'add' ? '+' : line.kind === 'del' ? '-' : ' ';
     return (
-        <div className={`line ${line.kind}`}>
+        <div className={`line ${line.kind}`} data-new={line.kind === 'del' ? undefined : line.newNo}>
             <span className="gutter">{line.oldNo ?? ''}</span>
             <span className="gutter">{line.newNo ?? ''}</span>
             <span className="sign">{line.kind === 'meta' ? '' : sign}</span>
@@ -1263,7 +1340,7 @@ function SplitRowView({row, hunkIndex, tokens}: {row: SplitRow; hunkIndex: numbe
                 <span className="gutter">{row.left?.oldNo ?? ''}</span>
                 <Content line={row.left} tokens={row.left ? tokens.get(row.left) : undefined}/>
             </div>
-            <div className={`half right ${row.right?.kind ?? 'none'}`}>
+            <div className={`half right ${row.right?.kind ?? 'none'}`} data-new={row.right?.newNo}>
                 <span className="gutter">{row.right?.newNo ?? ''}</span>
                 <Content line={row.right} tokens={row.right ? tokens.get(row.right) : undefined}/>
             </div>
@@ -1305,6 +1382,7 @@ const SHORTCUT_GROUPS: {title: string; rows: [string, string][]}[] = [
         ['↑ ↓', 'Previous or next file'],
         ['/', 'Filter'],
         ['⌘P', 'Go to file'],
+        ['⇧⌘F', 'Search in the changed files'],
         ['o', 'Open file in the default editor'],
     ]},
     {title: 'Reviewing', rows: [

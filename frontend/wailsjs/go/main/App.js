@@ -74,6 +74,10 @@ export function RunCommand(arg1, arg2) {
   return window['go']['main']['App']['RunCommand'](arg1, arg2);
 }
 
+export function SearchFiles(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['SearchFiles'](arg1, arg2, arg3, arg4);
+}
+
 export function SetViewed(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['SetViewed'](arg1, arg2, arg3, arg4);
 }
