@@ -141,27 +141,27 @@ function PRRow({pr, selected, reviewed, onOpen, onHover}: {
                 </span>
                 <span className="pr-sub">{pr.author} wants {pr.headRefName} in {pr.baseRefName}, updated {timeAgo(pr.updatedAt)}</span>
             </span>
-            <Overprint added={pr.additions} deleted={pr.deletions}/>
+            <SizeBars added={pr.additions} deleted={pr.deletions}/>
             <ReviewMeter done={reviewed} total={pr.changedFiles}/>
         </button>
     );
 }
 
-// Overprint shows a pull request's size: cyan for added lines, magenta for deleted, printed over each other.
-function Overprint({added, deleted}: {added: number; deleted: number}) {
+// SizeBars shows a pull request's size: one bar for added lines over one for deleted.
+function SizeBars({added, deleted}: {added: number; deleted: number}) {
     return (
-        <span className="overprint" role="img" aria-label={`${added} lines added, ${deleted} lines deleted`}>
-            <span className="overprint-bars">
-                <span className="ink-add" style={{width: `${inkShare(added)}%`}}/>
-                <span className="ink-del" style={{width: `${inkShare(deleted)}%`}}/>
+        <span className="size" role="img" aria-label={`${added} lines added, ${deleted} lines deleted`}>
+            <span className="size-bars">
+                <span className="bar-add" style={{width: `${inkShare(added)}%`}}/>
+                <span className="bar-del" style={{width: `${inkShare(deleted)}%`}}/>
             </span>
-            <span className="overprint-text"><span className="added">+{added}</span> <span className="deleted">−{deleted}</span></span>
+            <span className="size-text"><span className="added">+{added}</span> <span className="deleted">−{deleted}</span></span>
         </span>
     );
 }
 
-// ReviewRuler is the whole pull request at a glance: a press colour bar with one
-// patch per file, in tree order. A patch is wider the more lines changed, and turns yellow when reviewed.
+// ReviewRuler is the whole pull request at a glance: one cell per file, in tree order.
+// A cell is wider the more lines changed, and turns amber when reviewed.
 export function ReviewRuler({files, current, reviewed, changed, onPick}: {
     files: {path: string; added: number; deleted: number}[];
     current?: string;
@@ -171,7 +171,6 @@ export function ReviewRuler({files, current, reviewed, changed, onPick}: {
 }) {
     return (
         <nav className="ruler" aria-label="Files in this pull request">
-            <RegistrationMark/>
             {files.map(f => {
                 const state = reviewed[f.path] ? 'reviewed' : changed.has(f.path) ? 'changed since review' : 'not reviewed';
                 const classes = ['ruler-tick', reviewed[f.path] && 'done', changed.has(f.path) && 'changed', f.path === current && 'current']
@@ -190,16 +189,6 @@ export function ReviewRuler({files, current, reviewed, changed, onPick}: {
                 );
             })}
         </nav>
-    );
-}
-
-// RegistrationMark is the printer's target, used here as the app's one mark.
-export function RegistrationMark({className}: {className?: string}) {
-    return (
-        <svg className={`reg-mark ${className ?? ''}`} viewBox="0 0 16 16" aria-hidden="true">
-            <circle cx="8" cy="8" r="4.5" fill="none" stroke="currentColor"/>
-            <path d="M8 0v16M0 8h16" stroke="currentColor"/>
-        </svg>
     );
 }
 

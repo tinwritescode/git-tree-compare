@@ -1,98 +1,129 @@
-@import "@fontsource/familjen-grotesk/400.css";
-@import "@fontsource/familjen-grotesk/500.css";
-@import "@fontsource/familjen-grotesk/600.css";
-@import "@fontsource/familjen-grotesk/700.css";
-@import "@fontsource/sometype-mono/400.css";
-@import "@fontsource/sometype-mono/700.css";
-
-/*
- * Tailwind utilities, without its preflight: the existing styles below keep their look.
- * Unlayered rules here still win over utilities, so the two can sit side by side.
+/* Hallmark · theme: console (by request, graphite and paper) · genre: modern-minimal · shape: app screen · signature: the review ruler, one cell per file · v2.0.0
+ * critique: the old proof palette made every colour loud and the type 13px; Console gives each colour one meaning and reads at 15px.
  */
-@import "tailwindcss/theme.css" layer(theme);
-@import "tailwindcss/utilities.css" layer(utilities);
+/* Hallmark · waive 24b · existing review panes keep their spacing · this pass restyles the review app, the dense tree and diff spacing stays tuned per control */
+/* Hallmark · waive 26b · HeroUI .button carries :active and :disabled in its layer · every review action is a HeroUI button, so the states come from there */
+@import "@fontsource/host-grotesk/400.css";
+@import "@fontsource/host-grotesk/500.css";
+@import "@fontsource/host-grotesk/600.css";
+@import "@fontsource/atkinson-hyperlegible-mono/400.css";
+@import "@fontsource/atkinson-hyperlegible-mono/500.css";
+
+/* HeroUI v3 on Tailwind 4. Its rules sit in layers, so the unlayered rules below win where they overlap. */
+@import "tailwindcss";
+@import "@heroui/styles";
 
 /*
- * Tokens first, so the two themes differ only in values.
- * Reviewing is proofing, so the palette is a press run: cyan adds, magenta removes,
- * yellow means reviewed and nothing else. Everything else is one blue ink.
+ * Tokens first, so the two themes differ only in values. The palette is Console:
+ * a graphite ground in three steps, amber for what the reviewer did (reviewed, the main action),
+ * cool blue for what the system reports (PR numbers, hunks, the open file),
+ * green and red only for added and removed lines.
+ * The HeroUI names at the end point its components at the same values.
  */
 :root {
-    --bg: #0e2038;
-    --bg-alt: #142a47;
-    --bg-hover: #1c3658;
-    --bg-active: #25436b;
-    --border: #27466f;
-    --text: #dbe7f5;
-    --text-dim: #8aa4c4;
-    --btn-bg: #142a47;
-    --btn-border: #3b5f8c;
-    --accent: #ffe14d;
-    --accent-text: #ffe14d;
-    --on-accent: #0e2038;
-    --focus: #ffffff;
-    --add: #38d6f0;
-    --del: #ff5fa8;
-    --mod: #8aa4c4;
-    --rename: #a9c4ee;
-    --untracked: #8aa4c4;
-    --add-bg: rgba(56, 214, 240, 0.09);
-    --del-bg: rgba(255, 95, 168, 0.09);
-    --word-add: rgba(56, 214, 240, 0.3);
-    --word-del: rgba(255, 95, 168, 0.3);
-    --hunk-bg: #142a47;
-    --hunk-text: #a9c4ee;
-    --warn-bg: #3a3320;
-    --warn-text: #ffe14d;
-    --error-bg: #431f3f;
-    --error-text: #ffc0da;
-    --ink-blend: screen;
-    --ink-add: #38d6f0;
-    --ink-del: #ff5fa8;
+    --bg: oklch(17% 0.008 250);
+    --bg-alt: oklch(21% 0.009 250);
+    --bg-hover: oklch(24.5% 0.01 250);
+    --bg-active: oklch(13.5% 0.007 250);
+    --border: oklch(31% 0.01 250);
+    --text: oklch(95% 0.005 250);
+    --text-dim: oklch(71% 0.01 250);
+    --btn-bg: oklch(21% 0.009 250);
+    --btn-border: oklch(42% 0.012 250);
+    --accent: oklch(82% 0.15 80);
+    --accent-text: oklch(82% 0.15 80);
+    --accent-soft: oklch(29% 0.05 80);
+    --on-accent: oklch(18% 0.04 75);
+    --cool: oklch(77% 0.12 245);
+    --cool-soft: oklch(29% 0.05 245);
+    --focus: oklch(82% 0.15 80);
+    --add: oklch(76% 0.15 150);
+    --del: oklch(70% 0.17 25);
+    --mod: oklch(77% 0.12 245);
+    --rename: oklch(77% 0.12 245);
+    --untracked: oklch(71% 0.01 250);
+    --add-bg: oklch(24.5% 0.03 150);
+    --del-bg: oklch(24.5% 0.035 25);
+    --word-add: oklch(36% 0.07 150);
+    --word-del: oklch(36% 0.08 25);
+    --hunk-bg: oklch(21% 0.009 250);
+    --hunk-text: oklch(77% 0.12 245);
+    --warn-bg: oklch(29% 0.05 80);
+    --warn-text: oklch(86% 0.12 80);
+    --error-bg: oklch(24.5% 0.035 25);
+    --error-text: oklch(84% 0.08 25);
+    --ink-add: var(--add);
+    --ink-del: var(--del);
     color-scheme: dark;
 
-    --font-ui: "Familjen Grotesk", -apple-system, BlinkMacSystemFont, sans-serif;
-    --font-mono: "Sometype Mono", ui-monospace, Menlo, monospace;
+    --font-ui: "Host Grotesk", ui-sans-serif, system-ui, sans-serif;
+    --font-mono: "Atkinson Hyperlegible Mono", ui-monospace, Menlo, monospace;
     --font-title: var(--font-ui);
-    --radius: 1px;
-    --radius-lg: 2px;
-    --tick-height: 16px;
+    --radius: 6px;
+    --radius-lg: 10px;
+    --tick-height: 18px;
+    --scrim: oklch(0% 0 0 / 0.45);
+    --check-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4 8.5l2.5 2.5L12 5.5' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+
+    --background: var(--bg);
+    --foreground: var(--text);
+    --surface: var(--bg-alt);
+    --surface-foreground: var(--text);
+    --surface-secondary: var(--bg-hover);
+    --surface-tertiary: var(--bg-active);
+    --overlay: var(--bg-alt);
+    --overlay-foreground: var(--text);
+    --muted: var(--text-dim);
+    --default: var(--bg-hover);
+    --default-foreground: var(--text);
+    --accent-foreground: var(--on-accent);
+    --success: var(--add);
+    --danger: var(--del);
+    --separator: var(--border);
+    --field-background: var(--bg-active);
+    --field-foreground: var(--text);
+    --field-border: var(--border);
+    --font-sans: var(--font-ui);
+    --surface-shadow: none;
+    --field-shadow: none;
 }
 
-/* Light is a blueline proof: pale paper, and all type in blue ink rather than black. */
+/* Light is Console's paper colourway: warm paper, near-black ink, the same two signals darkened. */
 @media (prefers-color-scheme: light) {
     :root:not([data-theme="dark"]) {
-        --bg: #f3f7fc;
-        --bg-alt: #e6eef8;
-        --bg-hover: #dbe6f4;
-        --bg-active: #cbdaee;
-        --border: #c7d7ea;
-        --text: #12305a;
-        --text-dim: #4d6a91;
-        --btn-bg: #fbfdff;
-        --btn-border: #a9bfdb;
-        --accent: #ffdc2e;
-        --accent-text: #12305a;
-        --on-accent: #12305a;
-        --focus: #12305a;
-        --add: #00708a;
-        --del: #c2127a;
-        --mod: #4d6a91;
-        --rename: #2f5aa8;
-        --untracked: #4d6a91;
-        --add-bg: rgba(0, 174, 214, 0.12);
-        --del-bg: rgba(226, 0, 122, 0.08);
-        --word-add: rgba(0, 174, 214, 0.32);
-        --word-del: rgba(226, 0, 122, 0.24);
-        --hunk-bg: #e6eef8;
-        --hunk-text: #2f5aa8;
-        --warn-bg: #fff4bf;
-        --warn-text: #5c4800;
-        --error-bg: #fbe0ee;
-        --error-text: #8a0c56;
-        --ink-blend: multiply;
-        --ink-add: #12c4e6;
-        --ink-del: #f0309a;
+        --bg: oklch(98% 0.006 85);
+        --bg-alt: oklch(95.5% 0.007 85);
+        --bg-hover: oklch(93% 0.008 85);
+        --bg-active: oklch(100% 0 0);
+        --border: oklch(88% 0.008 85);
+        --text: oklch(19% 0.01 60);
+        --text-dim: oklch(45% 0.012 60);
+        --btn-bg: oklch(100% 0 0);
+        --btn-border: oklch(78% 0.01 85);
+        --accent: oklch(54% 0.14 70);
+        --accent-text: oklch(48% 0.13 70);
+        --accent-soft: oklch(93% 0.05 80);
+        --on-accent: oklch(99% 0.01 85);
+        --cool: oklch(52% 0.14 250);
+        --cool-soft: oklch(93% 0.03 250);
+        --focus: oklch(52% 0.14 250);
+        --add: oklch(48% 0.13 150);
+        --del: oklch(52% 0.18 25);
+        --mod: oklch(52% 0.14 250);
+        --rename: oklch(52% 0.14 250);
+        --untracked: oklch(45% 0.012 60);
+        --add-bg: oklch(95% 0.04 150);
+        --del-bg: oklch(95% 0.03 25);
+        --word-add: oklch(88% 0.08 150);
+        --word-del: oklch(88% 0.07 25);
+        --hunk-bg: oklch(95.5% 0.007 85);
+        --hunk-text: oklch(52% 0.14 250);
+        --warn-bg: oklch(93% 0.05 80);
+        --warn-text: oklch(40% 0.1 70);
+        --error-bg: oklch(95% 0.03 25);
+        --error-text: oklch(42% 0.15 25);
+        --check-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4 8.5l2.5 2.5L12 5.5' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+        --scrim: oklch(19% 0.01 60 / 0.25);
         color-scheme: light;
     }
 }
@@ -109,15 +140,10 @@ body {
     display: flex;
     flex-direction: column;
     font-family: var(--font-ui);
-    font-size: 13px;
+    font-size: 15px;
+    line-height: 1.45;
     background: var(--bg);
     color: var(--text);
-}
-
-button,
-select,
-input {
-    font: inherit;
 }
 
 /* Keyboard users need a ring that is visible on every surface. */
@@ -150,7 +176,7 @@ input {
 /* The one display moment: the repo name is set in a serif, the rest is UI type. */
 .repo {
     font-family: var(--font-title);
-    font-size: 15px;
+    font-size: 17px;
     font-weight: 500;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -173,7 +199,7 @@ input {
 
 .summary .hint {
     opacity: 0.6;
-    font-size: 12px;
+    font-size: 13px;
 }
 
 .added { color: var(--add); }
@@ -184,9 +210,9 @@ input {
     padding: 0 6px;
     border-radius: var(--radius);
     background: var(--bg-hover);
-    font-family: var(--font-mono);
-    font-size: 12px;
-    font-weight: 600;
+    font-family: var(--font-ui);
+    font-size: 13px;
+    font-weight: 500;
 }
 
 /* Status chips are outlined, not filled, so the tint stays in the letter. */
@@ -227,8 +253,8 @@ input {
 .row {
     display: flex;
     align-items: center;
-    gap: 6px;
-    padding: 4px 8px;
+    gap: 8px;
+    padding: 6px 10px;
     cursor: pointer;
     white-space: nowrap;
 }
@@ -237,10 +263,10 @@ input {
     background: var(--bg-hover);
 }
 
-/* The active row is marked by a rule on its edge, not by a fill alone. */
+/* The open file is marked by a cool rule on its edge, not by a fill alone. */
 .row.active {
     background: var(--bg-active);
-    box-shadow: inset 2px 0 0 var(--accent);
+    box-shadow: inset 2px 0 0 var(--cool);
 }
 
 .row.picked {
@@ -255,26 +281,23 @@ input {
     color: var(--text-dim);
 }
 
-/* The checkbox is a registration target: empty until the file is reviewed, then filled with yellow. */
+/* The checkbox is empty until the file is reviewed, then filled with amber: the reviewer's colour. */
 .row .review {
     appearance: none;
     flex: none;
-    width: 14px;
-    height: 14px;
+    width: 15px;
+    height: 15px;
     margin: 0 1px;
-    border: 1px solid var(--text-dim);
-    border-radius: 50%;
-    background:
-        linear-gradient(var(--text-dim), var(--text-dim)) center / 1px 100% no-repeat,
-        linear-gradient(var(--text-dim), var(--text-dim)) center / 100% 1px no-repeat;
+    border: 1px solid var(--btn-border);
+    border-radius: 4px;
+    background: transparent;
     cursor: pointer;
 }
 
 .row .review:checked {
     border-color: var(--accent);
     background:
-        linear-gradient(var(--on-accent), var(--on-accent)) center / 1px 100% no-repeat,
-        linear-gradient(var(--on-accent), var(--on-accent)) center / 100% 1px no-repeat,
+        var(--check-icon) center / 12px no-repeat,
         var(--accent);
 }
 
@@ -292,7 +315,7 @@ input {
 .counts {
     margin-left: auto;
     padding-left: 8px;
-    font-size: 11px;
+    font-size: 13px;
     font-family: var(--font-mono);
 }
 
@@ -321,7 +344,7 @@ input {
     align-items: center;
     gap: 8px;
     padding: 6px 8px;
-    font-size: 12px;
+    font-size: 13px;
     background: var(--bg-alt);
     border-bottom: 1px solid var(--border);
 }
@@ -381,7 +404,7 @@ input {
 }
 
 .diff-old {
-    font-size: 12px;
+    font-size: 13px;
     opacity: 0.6;
 }
 
@@ -389,8 +412,8 @@ input {
     margin: 0;
     padding: 6px 0;
     font-family: var(--font-mono);
-    font-size: 12.5px;
-    line-height: 1.55;
+    font-size: 14px;
+    line-height: 1.7;
 }
 
 .line {
@@ -479,7 +502,7 @@ input {
 
 .empty-title {
     font-family: var(--font-title);
-    font-size: 15px;
+    font-size: 17px;
     font-weight: 500;
     margin-bottom: 4px;
 }
@@ -505,7 +528,6 @@ input {
     background: var(--bg-alt);
     border: 1px solid var(--btn-border);
     border-radius: var(--radius-lg);
-    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
     overflow: hidden;
 }
 
@@ -515,7 +537,7 @@ input {
     justify-content: space-between;
     padding: 10px 12px 0;
     font-family: var(--font-title);
-    font-size: 14px;
+    font-size: 16px;
     font-weight: 500;
 }
 
@@ -534,7 +556,7 @@ input {
 }
 
 .picker-label {
-    font-size: 12px;
+    font-size: 13px;
     font-weight: 600;
     opacity: 0.6;
     margin-bottom: 4px;
@@ -567,7 +589,7 @@ input {
 }
 
 .picker-sub {
-    font-size: 11px;
+    font-size: 13px;
     opacity: 0.6;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -590,7 +612,7 @@ input {
     text-overflow: ellipsis;
     white-space: nowrap;
     font-family: var(--font-mono);
-    font-size: 12px;
+    font-size: 13px;
     direction: rtl;
     text-align: left;
 }
@@ -628,8 +650,8 @@ input {
     margin-left: auto;
     padding: 0 6px;
     border-radius: var(--radius);
-    font-family: var(--font-mono);
-    font-size: 11px;
+    font-family: var(--font-ui);
+    font-size: 13px;
     background: var(--add-bg);
     color: var(--add);
 }
@@ -641,7 +663,7 @@ input {
 
 .picker-hint {
     padding: 6px 12px;
-    font-size: 11px;
+    font-size: 13px;
     opacity: 0.6;
     border-top: 1px solid var(--border);
 }
@@ -703,7 +725,7 @@ input {
     justify-content: center;
     align-items: flex-start;
     padding-top: 12vh;
-    background: rgba(0, 0, 0, 0.25);
+    background: var(--scrim);
 }
 
 .quick {
@@ -714,7 +736,6 @@ input {
     background: var(--bg-alt);
     border: 1px solid var(--btn-border);
     border-radius: var(--radius-lg);
-    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
     overflow: hidden;
 }
 
@@ -786,7 +807,7 @@ input {
 
 .cmd-status {
     margin-top: 6px;
-    font-size: 12px;
+    font-size: 13px;
     opacity: 0.8;
 }
 
@@ -798,7 +819,7 @@ input {
     background: var(--bg);
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    font-size: 12px;
+    font-size: 13px;
     white-space: pre-wrap;
 }
 
@@ -823,7 +844,7 @@ input {
 }
 
 .cmt-empty {
-    font-size: 12px;
+    font-size: 13px;
     color: var(--text-dim);
     padding: 4px 0;
 }
@@ -839,7 +860,7 @@ input {
     padding: 2px 0;
     color: var(--accent-text);
     font-family: var(--font-mono);
-    font-size: 12px;
+    font-size: 13px;
     text-align: left;
     cursor: pointer;
 }
@@ -866,7 +887,7 @@ input {
     display: flex;
     align-items: center;
     gap: 6px;
-    font-size: 11px;
+    font-size: 13px;
     color: var(--text-dim);
 }
 
@@ -883,12 +904,12 @@ input {
 }
 
 .cmt-author {
-    font-size: 12px;
+    font-size: 13px;
     font-weight: 600;
 }
 
 .cmt-body {
-    font-size: 12px;
+    font-size: 13px;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
     max-height: 9em;
@@ -910,7 +931,7 @@ input {
     border-radius: 8px;
     background: var(--bg-active);
     color: var(--text);
-    font-size: 10px;
+    font-size: 12px;
     line-height: 16px;
     text-align: center;
 }
@@ -931,7 +952,6 @@ input {
     background: var(--bg-alt);
     border: 1px solid var(--border);
     border-radius: var(--radius-lg);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
 }
 
 .ctx-menu button {
@@ -943,7 +963,7 @@ input {
     border-radius: var(--radius);
     color: inherit;
     font: inherit;
-    font-size: 13px;
+    font-size: 14px;
     text-align: left;
     cursor: pointer;
 }
@@ -973,7 +993,6 @@ input {
     background: var(--bg-alt);
     border: 1px solid var(--btn-border);
     border-radius: var(--radius-lg);
-    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
 }
 
 .shortcuts-head {
@@ -982,13 +1001,13 @@ input {
     justify-content: space-between;
     margin-bottom: 6px;
     font-family: var(--font-title);
-    font-size: 14px;
+    font-size: 16px;
     font-weight: 500;
 }
 
 .shortcuts-group h3 {
     margin: 12px 0 4px;
-    font-size: 12px;
+    font-size: 13px;
     font-weight: 600;
     opacity: 0.6;
 }
@@ -1012,13 +1031,16 @@ input {
     margin: 0;
 }
 
-kbd {
-    font-family: var(--font-mono);
-    font-size: 12px;
-    padding: 0 5px;
-    border: 1px solid var(--btn-border);
-    border-radius: var(--radius);
-    background: var(--btn-bg);
+/* Bare keys in prose, such as the shortcuts sheet. In the base layer, so the Kbd component's classes win. */
+@layer base {
+    kbd {
+        font-family: var(--font-mono);
+        font-size: 13px;
+        padding: 0 5px;
+        border: 1px solid var(--btn-border);
+        border-radius: 4px;
+        background: var(--btn-bg);
+    }
 }
 
 /* The start screen covers the app until a repository opens. */
@@ -1029,103 +1051,123 @@ kbd {
     overflow: auto;
     display: flex;
     justify-content: center;
-    padding: 12vh 24px 24px;
+    padding: 14vh 24px 24px;
     box-sizing: border-box;
     background: var(--bg);
 }
 
 .landing-inner {
-    width: min(640px, 100%);
+    width: min(620px, 100%);
 }
 
 .landing h1 {
-    margin: 0 0 16px;
-    font-size: clamp(40px, 8vw, 72px);
-    font-weight: 700;
-    line-height: 1;
-    letter-spacing: -0.02em;
+    margin: 0;
+    font-size: clamp(32px, 5vw, 44px);
+    font-weight: 500;
+    line-height: 1.04;
+    letter-spacing: -0.03em;
+    text-wrap: balance;
+    overflow-wrap: break-word;
+    min-width: 0;
 }
 
 .landing-lede {
-    margin: 0 0 24px;
+    margin: 12px 0 0;
     max-width: 46ch;
     color: var(--text-dim);
+    font-size: 17px;
     line-height: 1.5;
 }
 
 .landing .error {
-    margin-bottom: 12px;
+    margin-top: 16px;
+    padding: 8px 12px;
     border-radius: var(--radius);
 }
 
-.landing h2 {
-    margin: 24px 0 8px;
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--text-dim);
+.landing-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 24px;
 }
 
-.landing-actions {
-    list-style: none;
+.landing-recent {
+    margin-top: 32px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--bg-alt);
+    overflow: hidden;
+}
+
+.landing-recent h2 {
+    margin: 0;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-dim);
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.landing-recent ul {
     margin: 0;
     padding: 0;
+    list-style: none;
+}
+
+.landing-recent li + li {
+    border-top: 1px solid var(--border);
 }
 
 .landing-action {
     display: flex;
     flex-direction: column;
-    align-items: flex-start;
     gap: 2px;
     width: 100%;
-    margin-bottom: 6px;
-    padding: 10px 12px;
+    padding: 12px 14px;
     background: none;
     color: inherit;
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
+    border: 0;
     text-align: left;
     cursor: pointer;
 }
 
 .landing-action:hover {
-    background: var(--bg-hover);
-    border-color: var(--btn-border);
-}
-
-.landing-action.primary {
+    background: var(--bg-active);
     box-shadow: inset 2px 0 0 var(--accent);
 }
 
+.landing-action:focus-visible {
+    outline-offset: -2px;
+}
+
+.landing-name {
+    font-size: 16px;
+    font-weight: 500;
+}
+
+.landing-name,
 .landing-sub {
     max-width: 100%;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-family: var(--font-mono);
-    font-size: 12px;
+}
+
+.landing-sub {
+    font-size: 14px;
     color: var(--text-dim);
 }
 
 .landing-foot {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 8px 16px;
-    margin-top: 32px;
-    font-size: 12px;
+    margin: 24px 0 0;
+    font-size: 14px;
     color: var(--text-dim);
 }
 
 .landing-foot code {
     font-family: var(--font-mono);
-}
-
-.landing-link {
-    padding: 0;
-    background: none;
-    border: none;
-    color: var(--accent-text);
-    cursor: pointer;
+    color: var(--text);
 }
 
 /* The terminal dock sits under the panes; Ctrl+` shows and hides it. */
@@ -1183,7 +1225,7 @@ kbd {
     padding: 0;
     background: none;
     color: var(--text);
-    font-size: 19px;
+    font-size: 20px;
     font-weight: 700;
     letter-spacing: -0.01em;
     cursor: pointer;
@@ -1215,7 +1257,7 @@ kbd {
 
 .prs-note strong {
     color: var(--text);
-    font-size: 15px;
+    font-size: 17px;
     font-weight: 600;
 }
 
@@ -1234,7 +1276,7 @@ kbd {
 
 .prs-group h2 {
     margin: 24px 0 6px;
-    font-size: 13px;
+    font-size: 14px;
     font-weight: 600;
     color: var(--text-dim);
 }
@@ -1277,7 +1319,7 @@ kbd {
 
 .pr-num {
     font-family: var(--font-mono);
-    color: var(--text-dim);
+    color: var(--cool);
     text-align: right;
 }
 
@@ -1292,7 +1334,7 @@ kbd {
     display: flex;
     align-items: baseline;
     gap: 8px;
-    font-size: 14px;
+    font-size: 16px;
     font-weight: 500;
     line-height: 1.35;
 }
@@ -1300,7 +1342,7 @@ kbd {
 .pr-sub {
     overflow: hidden;
     color: var(--text-dim);
-    font-size: 12px;
+    font-size: 13px;
     white-space: nowrap;
     text-overflow: ellipsis;
 }
@@ -1309,7 +1351,7 @@ kbd {
     flex: none;
     margin-left: 8px;
     color: var(--text-dim);
-    font-size: 12px;
+    font-size: 13px;
     font-weight: 400;
 }
 
@@ -1325,37 +1367,35 @@ kbd {
     color: var(--add);
 }
 
-/* Size as two inks printed over each other, so overlap reads as churn. */
-.overprint {
+/* Size: added lines over deleted lines, each on a log scale. */
+.size {
     display: flex;
     flex-direction: column;
     gap: 4px;
 }
 
-.overprint-bars {
-    position: relative;
-    display: block;
-    height: 8px;
-    isolation: isolate;
+.size-bars {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
 }
 
-.overprint-bars > span {
-    position: absolute;
-    inset: 0 auto 0 0;
-    mix-blend-mode: var(--ink-blend);
+.size-bars > span {
+    height: 4px;
+    border-radius: 2px;
 }
 
-.ink-add {
-    background: var(--ink-add);
+.bar-add {
+    background: var(--add);
 }
 
-.ink-del {
-    background: var(--ink-del);
+.bar-del {
+    background: var(--del);
 }
 
-.overprint-text {
+.size-text {
     font-family: var(--font-mono);
-    font-size: 11px;
+    font-size: 13px;
     white-space: nowrap;
 }
 
@@ -1366,13 +1406,14 @@ kbd {
     justify-content: flex-end;
     gap: 2px;
     font-family: var(--font-mono);
-    font-size: 12px;
+    font-size: 13px;
     color: var(--text-dim);
 }
 
 .tick {
-    width: 3px;
+    width: 4px;
     height: 12px;
+    border-radius: 1px;
     background: var(--btn-border);
 }
 
@@ -1409,7 +1450,7 @@ kbd {
 
 .review-name {
     overflow: hidden;
-    font-size: 14px;
+    font-size: 16px;
     font-weight: 600;
     white-space: nowrap;
     text-overflow: ellipsis;
@@ -1418,7 +1459,7 @@ kbd {
 .review-sub {
     overflow: hidden;
     color: var(--text-dim);
-    font-size: 12px;
+    font-size: 13px;
     white-space: nowrap;
     text-overflow: ellipsis;
 }
@@ -1426,7 +1467,7 @@ kbd {
 .review-count {
     flex: none;
     font-family: var(--font-mono);
-    font-size: 13px;
+    font-size: 14px;
 }
 
 .review-count strong {
@@ -1437,7 +1478,7 @@ kbd {
 .sync-note {
     flex: none;
     color: var(--warn-text);
-    font-size: 12px;
+    font-size: 13px;
 }
 
 /* The ruler: every file in tree order. It is the one loud thing in the app. */
@@ -1445,22 +1486,10 @@ kbd {
     display: flex;
     flex-shrink: 0;
     align-items: stretch;
-    gap: 2px;
+    gap: 3px;
     height: var(--tick-height);
-    padding: 0 12px 4px;
+    padding: 4px 12px 8px;
     border-bottom: 1px solid var(--border);
-}
-
-.ruler .reg-mark {
-    align-self: center;
-    margin-right: 6px;
-}
-
-.reg-mark {
-    flex: none;
-    width: 16px;
-    height: 16px;
-    color: var(--text-dim);
 }
 
 .ruler-tick {
@@ -1469,14 +1498,14 @@ kbd {
     min-width: 2px;
     padding: 0;
     border: 0;
-    border-radius: 0;
-    background: var(--bg-active);
+    border-radius: 2px;
+    background: var(--border);
     cursor: pointer;
     transition: background-color 120ms ease-out;
 }
 
 .ruler-tick:hover {
-    background: var(--btn-border);
+    background: var(--text-dim);
 }
 
 .ruler-tick.done {
@@ -1490,9 +1519,10 @@ kbd {
 .ruler-tick.current::after {
     content: "";
     position: absolute;
-    inset: auto 0 -4px;
+    inset: auto 0 -6px;
     height: 2px;
-    background: var(--text);
+    border-radius: 1px;
+    background: var(--cool);
 }
 
 .ruler-tick:focus-visible {
@@ -1500,48 +1530,8 @@ kbd {
     outline-offset: 1px;
 }
 
-/* Pressing x leaves a rubber stamp on the sheet. It answers the key, and clears itself. */
 .diff {
     position: relative;
-}
-
-.stamp {
-    position: absolute;
-    top: 72px;
-    right: 48px;
-    z-index: 4;
-    padding: 6px 14px 8px;
-    border: 3px solid var(--accent);
-    outline: 1px solid var(--accent);
-    outline-offset: 2px;
-    color: var(--accent);
-    font-family: var(--font-mono);
-    font-size: 34px;
-    font-weight: 700;
-    line-height: 1;
-    mix-blend-mode: var(--ink-blend);
-    pointer-events: none;
-    transform: rotate(-7deg);
-    animation: stamp 1100ms cubic-bezier(0.2, 0.9, 0.3, 1) forwards;
-}
-
-@keyframes stamp {
-    0% {
-        opacity: 0;
-        transform: rotate(-7deg) scale(1.7);
-    }
-    10% {
-        opacity: 1;
-        transform: rotate(-7deg) scale(1);
-    }
-    70% {
-        opacity: 1;
-        transform: rotate(-7deg) scale(1);
-    }
-    100% {
-        opacity: 0;
-        transform: rotate(-7deg) scale(1);
-    }
 }
 
 .passed {
@@ -1550,37 +1540,15 @@ kbd {
     align-items: center;
     justify-content: space-between;
     gap: 12px;
-    padding: 8px 12px;
-    background: var(--accent);
-    color: var(--on-accent);
-    font-weight: 600;
+    padding: 10px 14px;
+    background: var(--accent-soft);
+    border-bottom: 1px solid var(--accent);
+    color: var(--accent-text);
+    font-weight: 500;
 }
 
 .passed button {
     color: var(--text);
-}
-
-/* The landing's press bar draws once, the only motion nobody asked for. */
-.landing-bar {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-bottom: 28px;
-}
-
-.landing-bar > span {
-    flex: 1;
-    height: 10px;
-    background: linear-gradient(90deg,
-        var(--add) 0 25%, var(--del) 25% 50%, var(--accent) 50% 75%, var(--text) 75% 100%);
-    transform-origin: left;
-    animation: press-bar 700ms cubic-bezier(0.2, 0.9, 0.3, 1);
-}
-
-@keyframes press-bar {
-    from {
-        transform: scaleX(0);
-    }
 }
 
 .review-toggle[aria-pressed="true"] {
@@ -1595,14 +1563,10 @@ kbd {
     color: inherit;
 }
 
-.row.reviewed {
-    box-shadow: inset 2px 0 0 var(--accent);
-}
-
 .changed-tag {
     flex: none;
     color: var(--del);
-    font-size: 11px;
+    font-size: 13px;
 }
 
 .unsynced {
@@ -1628,13 +1592,5 @@ kbd {
 @media (prefers-reduced-motion: reduce) {
     .ruler-tick {
         transition: none;
-    }
-
-    .stamp {
-        animation-timing-function: step-end;
-    }
-
-    .landing-bar > span {
-        animation: none;
     }
 }

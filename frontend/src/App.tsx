@@ -110,7 +110,6 @@ function App() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [flash, setFlash] = useState('');
-    const [stamp, setStamp] = useState<{id: number; label: string} | null>(null); // the mark left by pressing x
 
     // Values read inside effects and handlers, without re-running them.
     const recordRef = useRef<ReviewRecord>(emptyRecord);
@@ -209,7 +208,6 @@ function App() {
         const {record: next, viewed} = toggleReviewed(recordRef.current, paths);
         commitRecord(next);
         flushReview();
-        if (viewed) setStamp({id: Date.now(), label: paths.length > 1 ? `${paths.length} reviewed` : 'Reviewed'});
         if (viewed && paths.length === 1 && paths[0] === selected?.path) {
             const following = nextUnreviewed(files, next, paths[0]);
             if (following) setSelected(following);
@@ -906,11 +904,6 @@ function App() {
                             )}
                         </aside>
                         <main className="diff">
-                            {stamp && (
-                                <div key={stamp.id} className="stamp" aria-hidden="true" onAnimationEnd={() => setStamp(null)}>
-                                    {stamp.label}
-                                </div>
-                            )}
                             {changes.length > 0 && reviewedCount === changes.length && (
                                 <div className="passed" role="status">
                                     <span>All {changes.length} files reviewed. Approve or request changes on GitHub.</span>
