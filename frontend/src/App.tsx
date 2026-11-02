@@ -20,6 +20,8 @@ import {
 } from '../wailsjs/go/main/App';
 import {BrowserOpenURL, EventsOn} from '../wailsjs/runtime/runtime';
 import {parseDiff, toSplitRows, Line, SplitRow} from './diff';
+import {highlight} from './highlight';
+import {paint, type Token} from './syntax';
 import {EditorMenu} from './editor-menu';
 import {Command, CommandPalette, CommandPanel, CommentBody, CommentsPanel, FileMenu, PRDiscussion, PRThread, QuickOpen, UpdateBanner} from './panels';
 import {PR, PRList, ReviewRuler} from './prs';
@@ -1126,21 +1128,32 @@ function DiffPanel(props: {
                     onChange={e => props.onNote(e.target.value)}
                 />
             )}
-            <DiffView text={text} split={split} threads={props.threads} onOpenURL={props.onOpenURL}/>
+            <DiffView text={text} path={file.path} split={split} threads={props.threads} onOpenURL={props.onOpenURL}/>
         </>
     );
 }
 
 // DiffView draws the file's diff. Review threads sit under their line on the new side.
 // A thread whose line is not in the diff (outdated, or the file changed since) is listed at the top.
-function DiffView({text, split, threads, onOpenURL}: {
+function DiffView({text, path, split, threads, onOpenURL}: {
     text: string;
+    path: string; // picks the language for syntax colours
     split: boolean;
     threads: PRThread[];
     onOpenURL: (url: string) => void;
 }) {
     const lines = useMemo(() => parseDiff(text), [text]);
     const rows = useMemo(() => (split ? toSplitRows(lines) : []), [lines, split]);
+    // Lines draw plain first and take their colours when the tokenizer is done.
+    const [tokens, setTokens] = useState<Map<Line, Token[]>>(() => new Map());
+    useEffect(() => {
+        let stale = false;
+        setTokens(new Map());
+        highlight(lines, path).then(map => !stale && setTokens(map), () => {});
+        return () => {
+            stale = true;
+        };
+    }, [lines, path]);
     const byLine = useMemo(() => {
         const map = new Map<number, PRThread[]>();
         for (const t of threads) map.set(t.line, [...(map.get(t.line) ?? []), t]);
@@ -1181,7 +1194,7 @@ function DiffView({text, split, threads, onOpenURL}: {
                         if (row.hunk) hunkIndex++;
                         return (
                             <Fragment key={i}>
-                                <SplitRowView row={row} hunkIndex={hunkIndex}/>
+                                <SplitRowView row={row} hunkIndex={hunkIndex} tokens={tokens}/>
                                 {threadsAt(row.right?.newNo)}
                             </Fragment>
                         );
@@ -1203,7 +1216,7 @@ function DiffView({text, split, threads, onOpenURL}: {
                     }
                     return (
                         <Fragment key={i}>
-                            <UnifiedLine line={line}/>
+                            <UnifiedLine line={line} tokens={tokens.get(line)}/>
                             {threadsAt(line.newNo)}
                         </Fragment>
                     );
@@ -1228,19 +1241,19 @@ function InlineThread({thread, onOpenURL}: {thread: PRThread; onOpenURL: (url: s
     );
 }
 
-function UnifiedLine({line}: {line: Line}) {
+function UnifiedLine({line, tokens}: {line: Line; tokens?: Token[]}) {
     const sign = line.kind === 'add' ? '+' : line.kind === 'del' ? '-' : ' ';
     return (
         <div className={`line ${line.kind}`}>
             <span className="gutter">{line.oldNo ?? ''}</span>
             <span className="gutter">{line.newNo ?? ''}</span>
             <span className="sign">{line.kind === 'meta' ? '' : sign}</span>
-            <Content line={line}/>
+            <Content line={line} tokens={tokens}/>
         </div>
     );
 }
 
-function SplitRowView({row, hunkIndex}: {row: SplitRow; hunkIndex: number}) {
+function SplitRowView({row, hunkIndex, tokens}: {row: SplitRow; hunkIndex: number; tokens: Map<Line, Token[]>}) {
     if (row.hunk) {
         return <div className="line hunk" data-hunk={hunkIndex}>{row.hunk.text}</div>;
     }
@@ -1248,24 +1261,26 @@ function SplitRowView({row, hunkIndex}: {row: SplitRow; hunkIndex: number}) {
         <div className="split-row">
             <div className={`half left ${row.left?.kind ?? 'none'}`}>
                 <span className="gutter">{row.left?.oldNo ?? ''}</span>
-                <Content line={row.left}/>
+                <Content line={row.left} tokens={row.left ? tokens.get(row.left) : undefined}/>
             </div>
             <div className={`half right ${row.right?.kind ?? 'none'}`}>
                 <span className="gutter">{row.right?.newNo ?? ''}</span>
-                <Content line={row.right}/>
+                <Content line={row.right} tokens={row.right ? tokens.get(row.right) : undefined}/>
             </div>
         </div>
     );
 }
 
-// Content draws a line's text, with the changed part of a paired line highlighted.
-function Content({line}: {line: Line | null}) {
+// Content draws a line's text in its syntax colours, with the changed part of a paired line marked.
+function Content({line, tokens}: {line: Line | null; tokens?: Token[]}) {
     if (!line) return <span className="content"/>;
-    if (!line.segs) return <span className="content">{line.text || ' '}</span>;
+    if (!line.text) return <span className="content"> </span>;
     return (
         <span className="content">
-            {line.segs.map((seg, i) => (
-                <span key={i} className={seg.changed ? 'word' : undefined}>{seg.text}</span>
+            {paint(tokens ?? [{text: line.text}], line.segs).map((piece, i) => (
+                <span key={i} className={piece.changed ? 'word' : undefined} style={piece.color ? {color: piece.color} : undefined}>
+                    {piece.text}
+                </span>
             ))}
         </span>
     );

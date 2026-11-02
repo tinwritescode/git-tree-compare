@@ -62,6 +62,18 @@
     --radius: 6px;
     --radius-lg: 10px;
     --tick-height: 18px;
+
+    /* Syntax colours stay off amber, green and red, which already mean reviewed, added and removed. */
+    --shiki-foreground: var(--text);
+    --shiki-token-keyword: oklch(76% 0.14 300);
+    --shiki-token-function: oklch(78% 0.12 245);
+    --shiki-token-string: oklch(82% 0.1 185);
+    --shiki-token-string-expression: oklch(82% 0.1 185);
+    --shiki-token-constant: oklch(78% 0.12 340);
+    --shiki-token-parameter: oklch(88% 0.02 250);
+    --shiki-token-punctuation: oklch(71% 0.01 250);
+    --shiki-token-comment: oklch(62% 0.015 250);
+    --shiki-token-link: oklch(78% 0.12 245);
     --scrim: oklch(0% 0 0 / 0.45);
     --check-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4 8.5l2.5 2.5L12 5.5' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
 
@@ -124,6 +136,15 @@
         --error-text: oklch(42% 0.15 25);
         --check-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4 8.5l2.5 2.5L12 5.5' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
         --scrim: oklch(19% 0.01 60 / 0.25);
+        --shiki-token-keyword: oklch(48% 0.17 300);
+        --shiki-token-function: oklch(48% 0.14 250);
+        --shiki-token-string: oklch(47% 0.09 185);
+        --shiki-token-string-expression: oklch(47% 0.09 185);
+        --shiki-token-constant: oklch(50% 0.17 340);
+        --shiki-token-parameter: oklch(30% 0.02 60);
+        --shiki-token-punctuation: oklch(45% 0.012 60);
+        --shiki-token-comment: oklch(55% 0.012 60);
+        --shiki-token-link: oklch(48% 0.15 250);
         color-scheme: light;
     }
 }
