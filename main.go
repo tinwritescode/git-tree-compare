@@ -18,8 +18,8 @@ func main() {
 	// Create an instance of the app structure
 	app := NewApp()
 
-	// Arguments come from the CLI wrapper: a repository path and an optional --base.
-	startupPath, startupBase := parseLaunchArgs(os.Args[1:])
+	// The CLI wrapper passes a repository path.
+	startupPath := parseLaunchArgs(os.Args[1:])
 
 	// Create application with options
 	err := wails.Run(&options.App{
@@ -44,7 +44,7 @@ func main() {
 		OnStartup: func(ctx context.Context) {
 			app.startup(ctx)
 			if startupPath != "" {
-				app.requestRepo(startupPath, startupBase)
+				app.requestRepo(startupPath)
 			}
 		},
 		Bind: []interface{}{

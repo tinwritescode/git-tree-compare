@@ -6,21 +6,13 @@ export function Changes(arg1:main.Scope):Promise<Array<main.FileChange>>;
 
 export function CheckUpdate():Promise<main.UpdateInfo>;
 
-export function Commits(arg1:string,arg2:string):Promise<Array<main.Commit>>;
-
-export function Conflicts(arg1:string,arg2:string):Promise<Array<string>>;
-
-export function DetectBase(arg1:string):Promise<main.PRBase>;
+export function CurrentPRNumber(arg1:string):Promise<number>;
 
 export function Diff(arg1:main.Scope,arg2:string):Promise<string>;
 
 export function DiffAnchor(arg1:string):Promise<string>;
 
-export function ExportPatch(arg1:main.Scope):Promise<string>;
-
-export function Fingerprint(arg1:string,arg2:string):Promise<string>;
-
-export function History():Promise<Array<main.HistoryEntry>>;
+export function ExportPatch(arg1:main.Scope,arg2:number):Promise<string>;
 
 export function HomeDir():Promise<string>;
 
@@ -30,42 +22,30 @@ export function InstalledEditors():Promise<Array<main.Editor>>;
 
 export function ListDir(arg1:string):Promise<main.DirListing>;
 
-export function ListFiles(arg1:string):Promise<Array<string>>;
+export function ListPRs(arg1:string):Promise<Array<main.PRInfo>>;
 
 export function OpenInEditor(arg1:string,arg2:string,arg3:string):Promise<void>;
 
-export function OpenPR(arg1:string):Promise<void>;
+export function PRComments(arg1:string,arg2:string):Promise<main.PRDiscussion>;
 
-export function PRComments(arg1:string):Promise<main.PRDiscussion>;
+export function PRViewedStates(arg1:string,arg2:string):Promise<Record<string, string>>;
 
-export function PRStatus(arg1:string):Promise<main.PRInfo>;
-
-export function ReadFile(arg1:string,arg2:string):Promise<string>;
-
-export function RecordHistory(arg1:string,arg2:string,arg3:string):Promise<void>;
-
-export function Refs(arg1:string):Promise<Array<string>>;
+export function PrepareReview(arg1:string,arg2:main.PRInfo):Promise<main.ReviewTarget>;
 
 export function ResizeTerminal(arg1:number,arg2:number):Promise<void>;
 
 export function ResolveRepo(arg1:string):Promise<string>;
 
-export function RevertToBase(arg1:main.Scope,arg2:Array<string>):Promise<main.RevertResult>;
-
 export function RunCommand(arg1:string,arg2:string):Promise<main.RunResult>;
 
-export function Stamps(arg1:string,arg2:Array<string>):Promise<Record<string, string>>;
+export function SearchFiles(arg1:string,arg2:string,arg3:Array<string>,arg4:main.SearchQuery):Promise<main.SearchResult>;
+
+export function SetViewed(arg1:string,arg2:string,arg3:Array<string>,arg4:boolean):Promise<void>;
 
 export function StartTerminal(arg1:string,arg2:number,arg3:number):Promise<void>;
 
 export function StopTerminal():Promise<void>;
 
-export function SyncReviewed(arg1:string,arg2:Array<string>):Promise<main.SyncResult>;
-
 export function TakePendingRepo():Promise<main.OpenRequest>;
-
-export function Worktrees(arg1:string):Promise<Array<main.Worktree>>;
-
-export function WriteFile(arg1:string,arg2:string,arg3:string):Promise<void>;
 
 export function WriteTerminal(arg1:string):Promise<void>;

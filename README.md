@@ -1,7 +1,7 @@
 # git-tree-compare
 
-A desktop app that shows what a branch changes, file by file, against the branch it merges into.
-It is the preview of your pull request, without leaving your machine.
+A desktop app for reviewing open pull requests, file by file, from the keyboard.
+Marking a file reviewed here marks it viewed on GitHub.
 
 Created by **Tin Nguyen**.
 
@@ -9,13 +9,13 @@ Created by **Tin Nguyen**.
 
 ## Features
 
-- Compare your working tree or any commit against a branch, tag, or remote branch
+- Every open pull request in a repository, with the ones waiting for your review first
+- Open a pull request without checking it out: your branch and uncommitted work stay as they are
 - Changed files as a folder tree, with status, line counts, and filtering
 - Split or unified diff, optional whitespace ignore, and hunk navigation
-- Mark files as reviewed, one at a time or in batches, and keep notes per file
-- Pull requests: see the PR's base, open review comments inline in the diff, and sync your reviewed files to the PR on GitHub
-- Warns when a file would conflict with the base
-- Compare with a git worktree, and browse past comparisons in History
+- Press `x` to mark a file reviewed, here and on GitHub, then move to the next unreviewed file
+- Viewed state comes from GitHub, and files changed since you viewed them are flagged
+- Review threads inline in the diff, and notes per file
 - Run a command (such as tests) against the changed files
 - Embedded terminal in the repository, toggled with `` Ctrl+` ``
 - Export a Markdown summary or a `.patch` file
@@ -31,8 +31,9 @@ The app checks for a newer release when it starts. When one exists, the banner o
 ### Requirements
 
 - macOS and `git` on your `PATH`
-- [GitHub CLI](https://cli.github.com/) (`gh`), logged in, for pull request features and update checks
-- [Zed](https://zed.dev/) if you want **Open in Zed** (optional)
+- [GitHub CLI](https://cli.github.com/) (`gh`), logged in
+- A local clone of the repository you review
+- An editor such as [Zed](https://zed.dev/) if you want to open files from the app (optional)
 
 ## Usage
 
@@ -43,37 +44,32 @@ The app checks for a newer release when it starts. When one exists, the banner o
 
 ```bash
 git-tree-compare /path/to/repo
-git-tree-compare /path/to/repo --base origin/main
 ```
 
 A second launch with a path hands the repository to the running window.
 
-### Compare
+### Pick a pull request
 
-1. Pick the branch to compare against in **Compare against**. The default is the pull request's base when there is one.
-2. Pick **Working tree** in **Scope** to see your uncommitted changes too, or a commit to see that commit alone.
-3. Click a file in the tree to see its diff.
-
-If the base is not in your clone, the app says so and suggests `git fetch`.
+The app lists every open pull request and refreshes the list every minute. If your checked-out branch has an open pull request, it opens directly. Press `p` to go back to the list.
 
 ### Review files
 
-- Tick the box next to a file, or press `x`, to mark it reviewed.
+- Press `x`, or tick the box next to a file, to mark it reviewed. The app moves to the next unreviewed file.
 - Select several files with `⌘`-click or `⇧`-click, then press `x` to mark them all.
-- Click **Sync reviewed** on a pull request to mark those files as viewed on GitHub.
+- Press `x` on a reviewed file to unmark it, here and on GitHub.
+- If GitHub cannot be reached, the mark stays on screen and the app keeps trying.
+- A file tagged **changed** was changed by a push after you reviewed it.
 
 ### Right-click a file
 
-- **Open in Zed** opens the file in Zed.
+- **Open in editor** opens your local copy of the file, which may differ from the pull request if another branch is checked out.
 - **Copy path** copies the path, or all selected paths.
 - **Mark reviewed** marks the file, or the whole selection, as reviewed.
-- **Revert to base** restores the selected changed files to the base version. It discards your local edits to them, so click it twice to confirm. Added, untracked, and renamed files are skipped, since they have no base version to restore.
 
-### Pull request comments
+### Comments
 
-When the current branch has an open pull request, the bar above the diff shows **Comments (N open)**.
+Press `c` to list review threads and conversation comments, grouped by file.
 
-- Click it to list review threads and conversation comments, grouped by file.
 - Open a file from the list to jump to its diff. Review threads appear under the line they were left on.
 - Each file in the tree shows the number of open threads on it.
 
@@ -85,18 +81,23 @@ Press `?` in the app to see this list.
 
 | Keys | Action |
 | --- | --- |
-| `↑` `↓` | Previous or next file |
-| `/` | Filter files |
-| `⌘P` | Quick open |
-| `o` | Open the file in Zed |
+| `↑` `↓` | Previous or next file, or pull request in the list |
+| `Enter` | Open the pull request |
+| `p` | Back to all pull requests |
+| `/` | Filter |
+| `⌘K` | All commands |
+| `⌘P` | Go to file |
+| `⇧⌘F` | Search the changed files at the pull request's head |
+| `x` | Mark reviewed here and on GitHub (or unmark) |
 | `⌘`-click | Add or remove a file from the selection |
 | `⇧`-click | Select a range of files |
-| `x` | Mark the selection reviewed (or unmark) |
 | `Esc` | Clear the selection |
 | `[` `]` | Previous or next hunk |
 | `v` | Split or unified view |
 | `b` | Ignore whitespace |
 | `n` | Note for the file |
+| `c` | Comments |
+| `o` | Open the file in your editor |
 | `t` | Run a command |
 | `r` | Refresh |
 | `` Ctrl+` `` | Show or hide the terminal |
@@ -111,7 +112,7 @@ cd frontend && npm install && cd ..
 wails build
 ```
 
-The app is written to `build/bin/git-tree-compare.app`. Run the tests with `go test ./...`.
+The app is written to `build/bin/git-tree-compare.app`. Run the tests with `go test ./...` and, in `frontend`, `npm test`.
 
 ### Publish a release
 

@@ -1,5 +1,6 @@
 import type {ReactNode} from 'react';
-import logo from './assets/logo.svg';
+import {Button} from './ui/button';
+import {Kbd} from './ui/kbd';
 import {basename} from './util';
 
 export interface LandingProps {
@@ -9,46 +10,35 @@ export interface LandingProps {
     onOpen: (path: string) => void;
     onPick: () => void; // opens the in-app repository picker
     onShortcuts: () => void;
-    banner?: ReactNode; // an update notice, shown above the logo
+    banner?: ReactNode; // an update notice, shown above the heading
 }
 
 // Landing is the first screen: where to start, before any repository is open.
+// The last repository leads the recent list, so continuing is one Enter away.
 export function Landing({last, recent, error, onOpen, onPick, onShortcuts, banner}: LandingProps) {
+    const repos = [...new Set([last, ...recent].filter(Boolean))].slice(0, 5);
     return (
         <div className="landing">
             <div className="landing-inner">
                 {banner}
-                <img className="landing-logo" src={logo} alt=""/>
-                <h1>git-tree-compare</h1>
-                <p className="landing-lede">See what a branch changes, file by file, against the branch it merges into.</p>
+                <h1>Review pull requests file by file.</h1>
+                <p className="landing-lede">Press X when a file is done. GitHub marks it viewed too.</p>
 
                 {error && <div className="error" role="alert">{error}</div>}
 
-                <ul className="landing-actions">
-                    <li>
-                        <button className="landing-action primary" onClick={onPick}>
-                            <span>Open repository…</span>
-                            <span className="landing-sub">Browse folders, or pick a recent one</span>
-                        </button>
-                    </li>
-                    {last && (
-                        <li>
-                            <button className="landing-action" onClick={() => onOpen(last)}>
-                                <span>Continue with {basename(last)}</span>
-                                <span className="landing-sub">{last}</span>
-                            </button>
-                        </li>
-                    )}
-                </ul>
+                <div className="landing-row">
+                    <Button variant="primary" onClick={onPick}>Open repository…</Button>
+                    <Button onClick={onShortcuts}>Shortcuts <Kbd>?</Kbd></Button>
+                </div>
 
-                {recent.length > 0 && (
-                    <section>
+                {repos.length > 0 && (
+                    <section className="landing-recent">
                         <h2>Recent</h2>
-                        <ul className="landing-actions">
-                            {recent.slice(0, 5).map(path => (
+                        <ul>
+                            {repos.map(path => (
                                 <li key={path}>
                                     <button className="landing-action" onClick={() => onOpen(path)}>
-                                        <span>{basename(path)}</span>
+                                        <span className="landing-name">{basename(path)}</span>
                                         <span className="landing-sub">{path}</span>
                                     </button>
                                 </li>
@@ -57,10 +47,7 @@ export function Landing({last, recent, error, onOpen, onPick, onShortcuts, banne
                     </section>
                 )}
 
-                <footer className="landing-foot">
-                    <button className="landing-link" onClick={onShortcuts}>Keyboard shortcuts (?)</button>
-                    <span>From a terminal: <code>git-tree-compare [path] [--base REF]</code></span>
-                </footer>
+                <p className="landing-foot">From a terminal: <code>git-tree-compare [path]</code></p>
             </div>
         </div>
     );

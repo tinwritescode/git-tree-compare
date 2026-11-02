@@ -4,23 +4,24 @@ import {cn} from '../lib/utils';
 export type ButtonVariant = 'default' | 'primary' | 'ghost' | 'link';
 export type ButtonSize = 'md' | 'icon';
 
-export const base =
-    'inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border text-[12.5px] font-normal leading-none [font-family:var(--font-ui)] [color:inherit] cursor-pointer transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] disabled:cursor-default disabled:opacity-40';
+// HeroUI's button classes on a native button, so callers keep onClick, title and disabled as they are.
+// Console squares HeroUI's pill to the control radius.
+const base = 'button rounded-[var(--radius)] text-[14px] font-medium';
 
-export const variants: Record<ButtonVariant, string> = {
-    // Quiet by default: a hairline border and a faint lift. The border turns accent on hover.
-    default: 'border-[var(--border)] bg-[var(--btn-bg)] shadow-[0_1px_1px_rgba(0,0,0,0.04)] enabled:hover:border-[var(--btn-border)] enabled:hover:bg-[var(--bg-hover)]',
-    // The main action of a view. Its key chips invert so they stay readable on the accent.
-    primary: 'border-[var(--accent)] bg-[var(--accent)] font-medium shadow-none [color:var(--bg)] enabled:hover:brightness-110 [&_kbd]:border-transparent [&_kbd]:bg-white/20 [&_kbd]:[color:inherit]',
-    // Sits on a tinted strip, such as the error bar, and shows its edge only on hover.
-    ghost: 'border-transparent bg-transparent enabled:hover:border-[var(--btn-border)] enabled:hover:bg-[var(--bg-hover)]',
+const variants: Record<ButtonVariant, string> = {
+    // A hairline outline on the panel colour: most actions.
+    default: 'button--outline border-[var(--btn-border)] bg-[var(--btn-bg)]',
+    // The main action of a view. Its key chips take the accent's ink so they stay readable.
+    primary: 'button--primary [&_kbd]:bg-transparent [&_kbd]:[color:inherit]',
+    // Sits on a tinted strip, such as the error bar, and shows only on hover.
+    ghost: 'button--ghost',
     // Plain text that acts like a button, such as "Open on GitHub".
-    link: 'border-0 bg-transparent px-0.5 py-0 [color:var(--accent)]',
+    link: 'button--ghost h-auto px-0.5 py-0 underline decoration-[var(--btn-border)] underline-offset-4 [color:var(--accent-text)]',
 };
 
-export const sizes: Record<ButtonSize, string> = {
-    md: 'h-7 px-2.5',
-    icon: 'h-7 w-7 justify-center px-0 text-[15px] leading-none',
+const sizes: Record<ButtonSize, string> = {
+    md: 'button--sm',
+    icon: 'button--sm button--icon-only',
 };
 
 // Button is the shared look for every action. className wins over the variant and size.
@@ -28,5 +29,5 @@ export function Button({variant = 'default', size = 'md', className, ...props}: 
     variant?: ButtonVariant;
     size?: ButtonSize;
 }) {
-    return <button className={cn(base, variants[variant], sizes[size], className)} {...props}/>;
+    return <button className={cn(base, variants[variant], variant === 'link' ? undefined : sizes[size], className)} {...props}/>;
 }

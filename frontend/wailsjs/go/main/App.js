@@ -10,16 +10,8 @@ export function CheckUpdate() {
   return window['go']['main']['App']['CheckUpdate']();
 }
 
-export function Commits(arg1, arg2) {
-  return window['go']['main']['App']['Commits'](arg1, arg2);
-}
-
-export function Conflicts(arg1, arg2) {
-  return window['go']['main']['App']['Conflicts'](arg1, arg2);
-}
-
-export function DetectBase(arg1) {
-  return window['go']['main']['App']['DetectBase'](arg1);
+export function CurrentPRNumber(arg1) {
+  return window['go']['main']['App']['CurrentPRNumber'](arg1);
 }
 
 export function Diff(arg1, arg2) {
@@ -30,16 +22,8 @@ export function DiffAnchor(arg1) {
   return window['go']['main']['App']['DiffAnchor'](arg1);
 }
 
-export function ExportPatch(arg1) {
-  return window['go']['main']['App']['ExportPatch'](arg1);
-}
-
-export function Fingerprint(arg1, arg2) {
-  return window['go']['main']['App']['Fingerprint'](arg1, arg2);
-}
-
-export function History() {
-  return window['go']['main']['App']['History']();
+export function ExportPatch(arg1, arg2) {
+  return window['go']['main']['App']['ExportPatch'](arg1, arg2);
 }
 
 export function HomeDir() {
@@ -58,36 +42,24 @@ export function ListDir(arg1) {
   return window['go']['main']['App']['ListDir'](arg1);
 }
 
-export function ListFiles(arg1) {
-  return window['go']['main']['App']['ListFiles'](arg1);
+export function ListPRs(arg1) {
+  return window['go']['main']['App']['ListPRs'](arg1);
 }
 
 export function OpenInEditor(arg1, arg2, arg3) {
   return window['go']['main']['App']['OpenInEditor'](arg1, arg2, arg3);
 }
 
-export function OpenPR(arg1) {
-  return window['go']['main']['App']['OpenPR'](arg1);
+export function PRComments(arg1, arg2) {
+  return window['go']['main']['App']['PRComments'](arg1, arg2);
 }
 
-export function PRComments(arg1) {
-  return window['go']['main']['App']['PRComments'](arg1);
+export function PRViewedStates(arg1, arg2) {
+  return window['go']['main']['App']['PRViewedStates'](arg1, arg2);
 }
 
-export function PRStatus(arg1) {
-  return window['go']['main']['App']['PRStatus'](arg1);
-}
-
-export function ReadFile(arg1, arg2) {
-  return window['go']['main']['App']['ReadFile'](arg1, arg2);
-}
-
-export function RecordHistory(arg1, arg2, arg3) {
-  return window['go']['main']['App']['RecordHistory'](arg1, arg2, arg3);
-}
-
-export function Refs(arg1) {
-  return window['go']['main']['App']['Refs'](arg1);
+export function PrepareReview(arg1, arg2) {
+  return window['go']['main']['App']['PrepareReview'](arg1, arg2);
 }
 
 export function ResizeTerminal(arg1, arg2) {
@@ -98,16 +70,16 @@ export function ResolveRepo(arg1) {
   return window['go']['main']['App']['ResolveRepo'](arg1);
 }
 
-export function RevertToBase(arg1, arg2) {
-  return window['go']['main']['App']['RevertToBase'](arg1, arg2);
-}
-
 export function RunCommand(arg1, arg2) {
   return window['go']['main']['App']['RunCommand'](arg1, arg2);
 }
 
-export function Stamps(arg1, arg2) {
-  return window['go']['main']['App']['Stamps'](arg1, arg2);
+export function SearchFiles(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['SearchFiles'](arg1, arg2, arg3, arg4);
+}
+
+export function SetViewed(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['SetViewed'](arg1, arg2, arg3, arg4);
 }
 
 export function StartTerminal(arg1, arg2, arg3) {
@@ -118,20 +90,8 @@ export function StopTerminal() {
   return window['go']['main']['App']['StopTerminal']();
 }
 
-export function SyncReviewed(arg1, arg2) {
-  return window['go']['main']['App']['SyncReviewed'](arg1, arg2);
-}
-
 export function TakePendingRepo() {
   return window['go']['main']['App']['TakePendingRepo']();
-}
-
-export function Worktrees(arg1) {
-  return window['go']['main']['App']['Worktrees'](arg1);
-}
-
-export function WriteFile(arg1, arg2, arg3) {
-  return window['go']['main']['App']['WriteFile'](arg1, arg2, arg3);
 }
 
 export function WriteTerminal(arg1) {

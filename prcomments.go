@@ -23,11 +23,9 @@ type PRThread struct {
 	Comments []PRComment `json:"comments"`
 }
 
-// PRDiscussion is everything said on the open pull request.
+// PRDiscussion is everything said on a pull request.
 // Truncated is set when GitHub has more threads or comments than were fetched.
 type PRDiscussion struct {
-	Number    int         `json:"number"`
-	URL       string      `json:"url"`
 	Threads   []PRThread  `json:"threads"`
 	Comments  []PRComment `json:"comments"`
 	Truncated bool        `json:"truncated"`
@@ -130,21 +128,11 @@ func parsePRComments(out []byte) (PRDiscussion, error) {
 	return d, nil
 }
 
-// PRComments returns the discussion on the current branch's pull request. It only reads.
-func PRComments(repo string) (PRDiscussion, error) {
-	pr := PRStatus(repo)
-	if pr == nil || pr.ID == "" {
-		return PRDiscussion{}, ErrNoPullRequest
-	}
-	out, err := ghGraphQL(repo, prCommentsQuery, map[string]string{"id": pr.ID})
+// PRComments returns the discussion on a pull request. It only reads.
+func PRComments(repo, prID string) (PRDiscussion, error) {
+	out, err := ghGraphQL(repo, prCommentsQuery, map[string]string{"id": prID})
 	if err != nil {
 		return PRDiscussion{}, err
 	}
-	d, err := parsePRComments(out)
-	if err != nil {
-		return PRDiscussion{}, err
-	}
-	d.Number = pr.Number
-	d.URL = pr.URL
-	return d, nil
+	return parsePRComments(out)
 }

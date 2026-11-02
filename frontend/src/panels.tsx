@@ -1,43 +1,46 @@
-import {type KeyboardEvent, useEffect, useMemo, useRef, useState} from 'react';
+import {type KeyboardEvent, type ReactNode, useEffect, useMemo, useRef, useState} from 'react';
 import type {main} from '../wailsjs/go/models';
 import {RunCommand} from '../wailsjs/go/main/App';
 import {fuzzyScore, shellQuote} from './util';
 import {Button} from './ui/button';
 import {Kbd} from './ui/kbd';
 
-// QuickOpen jumps to any file in the repository by typing part of its path.
-// Changed files carry their status and are listed first when the query is empty.
-export function QuickOpen({paths, changed, onPick, onClose}: {
-    paths: string[];
-    changed: Map<string, string>;
-    onPick: (path: string) => void;
+export type PickerItem = {id: string; label: string; leading?: ReactNode; hint?: string};
+
+// Picker is a searchable list in a dialog: type to narrow it, arrows to move, Enter to choose.
+function Picker({placeholder, empty, items, order, onPick, onClose}: {
+    placeholder: string;
+    empty: string;
+    items: PickerItem[];
+    order?: (a: PickerItem, b: PickerItem) => number; // breaks ties between equal matches
+    onPick: (id: string) => void;
     onClose: () => void;
 }) {
     const [query, setQuery] = useState('');
     const [index, setIndex] = useState(0);
 
     const matches = useMemo(() => {
-        return paths
-            .map(path => ({path, score: fuzzyScore(query, path), changed: changed.has(path)}))
+        return items
+            .map(item => ({item, score: fuzzyScore(query, item.label)}))
             .filter(m => m.score >= 0)
-            .sort((a, b) => a.score - b.score || Number(b.changed) - Number(a.changed))
-            .map(m => m.path)
+            .sort((a, b) => a.score - b.score || (order?.(a.item, b.item) ?? 0))
+            .map(m => m.item)
             .slice(0, 50);
-    }, [paths, changed, query]);
+    }, [items, order, query]);
 
     function onKey(e: KeyboardEvent) {
         if (e.key === 'Escape') onClose();
         if (e.key === 'ArrowDown') setIndex(i => Math.min(i + 1, matches.length - 1));
         if (e.key === 'ArrowUp') setIndex(i => Math.max(i - 1, 0));
-        if (e.key === 'Enter' && matches[index]) onPick(matches[index]);
+        if (e.key === 'Enter' && matches[index]) onPick(matches[index].id);
     }
 
     return (
         <div className="overlay" onClick={onClose}>
-            <div className="quick" onClick={e => e.stopPropagation()}>
+            <div className="quick" role="dialog" aria-label={placeholder} onClick={e => e.stopPropagation()}>
                 <input
                     autoFocus
-                    placeholder="Go to file…"
+                    placeholder={placeholder}
                     value={query}
                     onChange={e => {
                         setQuery(e.target.value);
@@ -46,25 +49,49 @@ export function QuickOpen({paths, changed, onPick, onClose}: {
                     onKeyDown={onKey}
                 />
                 <ul>
-                    {matches.map((path, i) => {
-                        const status = changed.get(path);
-                        return (
-                            <li
-                                key={path}
-                                className={i === index ? 'active' : ''}
-                                onMouseEnter={() => setIndex(i)}
-                                onClick={() => onPick(path)}
-                            >
-                                <span className={`status status-${status ?? ''}`}>{status ?? ''}</span>
-                                <span>{path}</span>
-                            </li>
-                        );
-                    })}
-                    {matches.length === 0 && <li className="none">No matching file</li>}
+                    {matches.map((item, i) => (
+                        <li
+                            key={item.id}
+                            className={i === index ? 'active' : ''}
+                            onMouseEnter={() => setIndex(i)}
+                            onClick={() => onPick(item.id)}
+                        >
+                            {item.leading}
+                            <span>{item.label}</span>
+                            {item.hint && <kbd>{item.hint}</kbd>}
+                        </li>
+                    ))}
+                    {matches.length === 0 && <li className="none">{empty}</li>}
                 </ul>
             </div>
         </div>
     );
+}
+
+// QuickOpen jumps to a changed file by typing part of its path.
+export function QuickOpen({files, onPick, onClose}: {
+    files: {path: string; status: string}[];
+    onPick: (path: string) => void;
+    onClose: () => void;
+}) {
+    const items = useMemo(() => files.map(f => ({
+        id: f.path,
+        label: f.path,
+        leading: <span className={`status status-${f.status}`}>{f.status}</span>,
+    })), [files]);
+    return <Picker placeholder="Go to file…" empty="No matching file" items={items} onPick={onPick} onClose={onClose}/>;
+}
+
+export type Command = {id: string; label: string; hint?: string; run: () => void};
+
+// CommandPalette holds the actions that do not earn a permanent place on screen.
+export function CommandPalette({commands, onClose}: {commands: Command[]; onClose: () => void}) {
+    const items = useMemo(() => commands.map(({id, label, hint}) => ({id, label, hint})), [commands]);
+    function pick(id: string) {
+        onClose();
+        commands.find(c => c.id === id)?.run();
+    }
+    return <Picker placeholder="Type a command…" empty="No matching command" items={items} onPick={pick} onClose={onClose}/>;
 }
 
 // CommandPanel runs a command in the repository, such as a test command. A
@@ -167,40 +194,9 @@ export function UpdateBanner({update, installing, onInstall, onOpen, onLater}: {
     );
 }
 
-export type PRView = main.PRInfo;
 export type PRDiscussion = main.PRDiscussion;
 export type PRThread = main.PRThread;
 export type PRComment = main.PRComment;
-
-// PRBanner shows the open pull request and what changed on it since it was last seen.
-export function PRBanner({pr, newCommits, unresolved, onOpen, onSeen, onSync, onComments}: {
-    pr: PRView;
-    newCommits: boolean;
-    unresolved: number; // open review threads on GitHub
-    onOpen: () => void;
-    onSeen: () => void;
-    onSync?: () => void; // marks the reviewed files as viewed on GitHub; absent outside the working tree
-    onComments: () => void;
-}) {
-    return (
-        <div className="pr" role="status">
-            <span className="pr-title">PR #{pr.number} {pr.title}</span>
-            {pr.mergeable === 'CONFLICTING' && <span className="pr-flag bad">GitHub: conflicts</span>}
-            {newCommits && <span className="pr-flag new">new commits since you last looked</span>}
-            <span className="spacer"/>
-            {newCommits && <Button onClick={onSeen}>Mark seen</Button>}
-            <Button onClick={onComments} title="Review comments on GitHub">
-                Comments{unresolved > 0 ? ` (${unresolved} open)` : ''}
-            </Button>
-            {onSync && (
-                <Button onClick={onSync} title="Mark your reviewed files as viewed on GitHub">
-                    Sync reviewed
-                </Button>
-            )}
-            <Button onClick={onOpen}>Open PR</Button>
-        </div>
-    );
-}
 
 // CommentsPanel lists the review threads and conversation comments on the open pull request.
 // Threads are grouped by file; a file name opens that file's diff.
@@ -224,9 +220,7 @@ export function CommentsPanel({discussion, loading, onOpenFile, onOpenURL, onRef
     return (
         <section className="cmt" aria-label="Pull request comments">
             <div className="cmt-bar">
-                <span className="cmt-title">
-                    {discussion ? `PR #${discussion.number} comments` : 'PR comments'}
-                </span>
+                <span className="cmt-title">Comments</span>
                 <span className="spacer"/>
                 <Button onClick={onRefresh} disabled={loading}>
                     {loading ? 'Loading…' : 'Refresh'}
@@ -293,20 +287,15 @@ export interface FileMenuProps {
     x: number;
     y: number;
     paths: string[]; // the files the actions apply to
-    reviewable: boolean; // reviewed marks only exist in the working tree
     allReviewed: boolean;
     onOpenInEditor: (path: string) => void;
     onCopyPaths: () => void;
     onToggleReviewed: () => void;
-    onRevert: () => void;
     onClose: () => void;
 }
 
 // FileMenu is the right-click menu for files in the tree. It acts on every file in paths.
-export function FileMenu({x, y, paths, reviewable, allReviewed, onOpenInEditor, onCopyPaths, onToggleReviewed, onRevert, onClose}: FileMenuProps) {
-    // Revert throws away local edits, so the first click only arms it; the second runs it.
-    const [armed, setArmed] = useState(false);
-
+export function FileMenu({x, y, paths, allReviewed, onOpenInEditor, onCopyPaths, onToggleReviewed, onClose}: FileMenuProps) {
     useEffect(() => {
         const close = (e: globalThis.KeyboardEvent) => {
             if (e.key === 'Escape') onClose();
@@ -318,7 +307,7 @@ export function FileMenu({x, y, paths, reviewable, allReviewed, onOpenInEditor, 
     const single = paths.length === 1 ? paths[0] : null;
     // Keep the menu inside the window when it opens near the right or bottom edge.
     const left = Math.min(x, window.innerWidth - 220);
-    const top = Math.min(y, window.innerHeight - 160);
+    const top = Math.min(y, window.innerHeight - 130);
 
     function run(action: () => void) {
         action();
@@ -334,27 +323,12 @@ export function FileMenu({x, y, paths, reviewable, allReviewed, onOpenInEditor, 
                         {paths.length > 1 ? `Copy ${paths.length} paths` : 'Copy path'}
                     </button>
                 </li>
-                {reviewable && (
-                    <>
-                        <li role="separator" className="ctx-sep"/>
-                        <li role="none">
-                            <button role="menuitem" onClick={() => run(onToggleReviewed)}>
-                                {allReviewed ? 'Mark unreviewed' : paths.length > 1 ? `Mark ${paths.length} reviewed` : 'Mark reviewed'}
-                            </button>
-                        </li>
-                        <li role="none">
-                            <button
-                                role="menuitem"
-                                className={armed ? 'ctx-danger' : undefined}
-                                onClick={() => (armed ? run(onRevert) : setArmed(true))}
-                            >
-                                {armed
-                                    ? 'Click again to discard local edits'
-                                    : paths.length > 1 ? `Revert ${paths.length} to base` : 'Revert to base'}
-                            </button>
-                        </li>
-                    </>
-                )}
+                <li role="separator" className="ctx-sep"/>
+                <li role="none">
+                    <button role="menuitem" onClick={() => run(onToggleReviewed)}>
+                        {allReviewed ? 'Mark unreviewed' : paths.length > 1 ? `Mark ${paths.length} reviewed` : 'Mark reviewed'}
+                    </button>
+                </li>
             </ul>
         </div>
     );
