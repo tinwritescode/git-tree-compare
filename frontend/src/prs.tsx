@@ -2,6 +2,7 @@ import {useEffect, useMemo, useRef, useState} from 'react';
 import type {main} from '../wailsjs/go/models';
 import {basename, inkShare, tickWeight, timeAgo} from './util';
 import {Button} from './ui/button';
+import {OwlTray, Snail} from './mascots';
 
 export type PR = main.PRInfo;
 
@@ -87,8 +88,15 @@ export function PRList({repo, prs, loading, error, reviewedCount, active, onOpen
                     <span>Check that this repository is on GitHub and that <code>gh auth status</code> shows you logged in.</span>
                 </div>
             )}
+            {!error && loading && prs.length === 0 && (
+                <div className="prs-note mascot-state" role="status">
+                    <Snail/>
+                    <strong>Fetching pull requests…</strong>
+                </div>
+            )}
             {!error && !loading && prs.length === 0 && (
-                <div className="prs-note">
+                <div className="prs-note mascot-state">
+                    <OwlTray/>
                     <strong>No open pull requests.</strong>
                     <span>When one opens on GitHub it appears here within a minute.</span>
                 </div>

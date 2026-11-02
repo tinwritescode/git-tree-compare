@@ -1,6 +1,7 @@
 import type {ReactNode} from 'react';
 import {Button} from './ui/button';
 import {Kbd} from './ui/kbd';
+import {OwlAsleep} from './mascots';
 import {basename} from './util';
 
 export interface LandingProps {
@@ -21,6 +22,7 @@ export function Landing({last, recent, error, onOpen, onPick, onShortcuts, banne
         <div className="landing">
             <div className="landing-inner">
                 {banner}
+                <OwlAsleep/>
                 <h1>Review pull requests file by file.</h1>
                 <p className="landing-lede">Press X when a file is done. GitHub marks it viewed too.</p>
 

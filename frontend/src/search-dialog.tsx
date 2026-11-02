@@ -2,6 +2,7 @@ import {type KeyboardEvent, useEffect, useMemo, useRef, useState} from 'react';
 import type {main} from '../wailsjs/go/models';
 import {SearchFiles} from '../wailsjs/go/main/App';
 import {groupHits, markRanges} from './search';
+import {OwlSearch} from './mascots';
 
 export type SearchQuery = main.SearchQuery;
 export type SearchHit = main.SearchHit;
@@ -139,7 +140,7 @@ export function SearchDialog({repo, head, paths, query, onQuery, onPick, onClose
                             </ul>
                         </li>
                     ))}
-                    {result && !hits.length && <li className="none">No matches in the {paths.length} changed files.</li>}
+                    {result && !hits.length && <li className="none mascot-state"><OwlSearch/>No matches in the {paths.length} changed files.</li>}
                     {!result && !error && <li className="none">Type at least two characters.</li>}
                 </ul>
                 {result?.truncated && <div className="search-foot">Showing the first {hits.length} matches. Narrow the search.</div>}

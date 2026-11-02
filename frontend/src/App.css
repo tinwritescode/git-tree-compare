@@ -1,11 +1,11 @@
-/* Hallmark · theme: console (by request, graphite and paper) · genre: modern-minimal · shape: app screen · signature: the review ruler, one cell per file · v2.0.0
- * critique: the old proof palette made every colour loud and the type 13px; Console gives each colour one meaning and reads at 15px.
+/* Hallmark · theme: cute (by request, lavender paper and navy ink) · genre: modern-minimal · shape: app screen · signature: the review ruler, one cell per file · v2.0.0
+ * critique: Console was correct but cold; Cute keeps one meaning per colour (cherry acts, sun means reviewed) and gives each empty state a mascot.
  */
 /* Hallmark · waive 24b · existing review panes keep their spacing · this pass restyles the review app, the dense tree and diff spacing stays tuned per control */
 /* Hallmark · waive 26b · HeroUI .button carries :active and :disabled in its layer · every review action is a HeroUI button, so the states come from there */
-@import "@fontsource/host-grotesk/400.css";
-@import "@fontsource/host-grotesk/500.css";
-@import "@fontsource/host-grotesk/600.css";
+@import "@fontsource/itim/400.css";
+@import "@fontsource/andika/400.css";
+@import "@fontsource/andika/700.css";
 @import "@fontsource/atkinson-hyperlegible-mono/400.css";
 @import "@fontsource/atkinson-hyperlegible-mono/500.css";
 
@@ -14,68 +14,85 @@
 @import "@heroui/styles";
 
 /*
- * Tokens first, so the two themes differ only in values. The palette is Console:
- * a graphite ground in three steps, amber for what the reviewer did (reviewed, the main action),
- * cool blue for what the system reports (PR numbers, hunks, the open file),
- * green and red only for added and removed lines.
- * The HeroUI names at the end point its components at the same values.
+ * Tokens first, so the two themes differ only in values. The palette is Cute:
+ * lavender paper and navy ink, cherry for what the reviewer can do (the main action),
+ * sun yellow for what the reviewer did (reviewed), periwinkle for what the system reports
+ * (PR numbers, hunks, the open file), green and red only for added and removed lines.
+ * The --m-* names colour the mascots. The HeroUI names at the end point its components at the same values.
  */
 :root {
-    --bg: oklch(17% 0.008 250);
-    --bg-alt: oklch(21% 0.009 250);
-    --bg-hover: oklch(24.5% 0.01 250);
-    --bg-active: oklch(13.5% 0.007 250);
-    --border: oklch(31% 0.01 250);
-    --text: oklch(95% 0.005 250);
-    --text-dim: oklch(71% 0.01 250);
-    --btn-bg: oklch(21% 0.009 250);
-    --btn-border: oklch(42% 0.012 250);
-    --accent: oklch(82% 0.15 80);
-    --accent-text: oklch(82% 0.15 80);
-    --accent-soft: oklch(29% 0.05 80);
-    --on-accent: oklch(18% 0.04 75);
-    --cool: oklch(77% 0.12 245);
-    --cool-soft: oklch(29% 0.05 245);
-    --focus: oklch(82% 0.15 80);
-    --add: oklch(76% 0.15 150);
-    --del: oklch(70% 0.17 25);
-    --mod: oklch(77% 0.12 245);
-    --rename: oklch(77% 0.12 245);
-    --untracked: oklch(71% 0.01 250);
-    --add-bg: oklch(24.5% 0.03 150);
-    --del-bg: oklch(24.5% 0.035 25);
-    --word-add: oklch(36% 0.07 150);
-    --word-del: oklch(36% 0.08 25);
-    --hunk-bg: oklch(21% 0.009 250);
-    --hunk-text: oklch(77% 0.12 245);
-    --warn-bg: oklch(29% 0.05 80);
-    --warn-text: oklch(86% 0.12 80);
-    --error-bg: oklch(24.5% 0.035 25);
-    --error-text: oklch(84% 0.08 25);
+    --bg: #F4F2FB;
+    --bg-alt: #FFFFFF;
+    --bg-hover: #ECE9F8;
+    --bg-active: #FFFFFF;
+    --border: #D9D5F0;
+    --text: #24206A;
+    --text-dim: #5B5790;
+    --btn-bg: #FFFFFF;
+    --btn-border: #B9B3E0;
+    --accent: #D92F39;
+    --accent-text: #C42530;
+    --accent-soft: #FDE7E8;
+    --on-accent: #FFFFFF;
+    --done: #FFD447;
+    --done-soft: #FFF3C4;
+    --done-text: #6B4E00;
+    --on-done: #24206A;
+    --night: #24206A;
+    --on-night: #FFFFFF;
+    --cool: #4B45B8;
+    --cool-soft: #E6E3F8;
+    --focus: #4B45B8;
+    --add: #1F7A52;
+    --del: #C42530;
+    --mod: #4B45B8;
+    --rename: #4B45B8;
+    --untracked: #5B5790;
+    --add-bg: #E4F5EC;
+    --del-bg: #FDE7E8;
+    --word-add: #BFE8D0;
+    --word-del: #F8C4C7;
+    --hunk-bg: #ECE9F8;
+    --hunk-text: #5B5790;
+    --warn-bg: #FFF3C4;
+    --warn-text: #6B4E00;
+    --error-bg: #FDE7E8;
+    --error-text: #A81F29;
     --ink-add: var(--add);
     --ink-del: var(--del);
-    color-scheme: dark;
+    color-scheme: light;
 
-    --font-ui: "Host Grotesk", ui-sans-serif, system-ui, sans-serif;
+    --font-ui: "Andika", ui-sans-serif, system-ui, sans-serif;
     --font-mono: "Atkinson Hyperlegible Mono", ui-monospace, Menlo, monospace;
-    --font-title: var(--font-ui);
-    --radius: 6px;
-    --radius-lg: 10px;
+    --font-title: "Itim", "Andika", ui-rounded, system-ui, sans-serif;
+    --radius: 8px;
+    --radius-lg: 14px;
     --tick-height: 18px;
 
-    /* Syntax colours stay off amber, green and red, which already mean reviewed, added and removed. */
+    /* Syntax colours stay off yellow, green and red, which already mean reviewed, added and removed. */
     --shiki-foreground: var(--text);
-    --shiki-token-keyword: oklch(76% 0.14 300);
-    --shiki-token-function: oklch(78% 0.12 245);
-    --shiki-token-string: oklch(82% 0.1 185);
-    --shiki-token-string-expression: oklch(82% 0.1 185);
-    --shiki-token-constant: oklch(78% 0.12 340);
-    --shiki-token-parameter: oklch(88% 0.02 250);
-    --shiki-token-punctuation: oklch(71% 0.01 250);
-    --shiki-token-comment: oklch(62% 0.015 250);
-    --shiki-token-link: oklch(78% 0.12 245);
-    --scrim: oklch(0% 0 0 / 0.45);
-    --check-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4 8.5l2.5 2.5L12 5.5' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    --shiki-token-keyword: #7B3FC4;
+    --shiki-token-function: #2563C9;
+    --shiki-token-string: #B4410C;
+    --shiki-token-string-expression: #B4410C;
+    --shiki-token-constant: #BE2F7A;
+    --shiki-token-parameter: #24206A;
+    --shiki-token-punctuation: #5B5790;
+    --shiki-token-comment: #6F6A9F;
+    --shiki-token-link: #2563C9;
+    --scrim: rgb(36 32 106 / 0.3);
+    --check-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4 8.5l2.5 2.5L12 5.5' fill='none' stroke='%2324206A' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+
+    --m-ink: #24206A;
+    --m-pupil: #24206A;
+    --m-lilac: #D9D5F0;
+    --m-sun: #FFD447;
+    --m-sun-deep: #E0A800;
+    --m-sun-soft: #FFF6C9;
+    --m-cherry: #E23D45;
+    --m-acorn: #C47A3B;
+    --m-leaf: #4FB286;
+    --m-pink: #F7B3C2;
 
     --background: var(--bg);
     --foreground: var(--text);
@@ -100,52 +117,55 @@
     --field-shadow: none;
 }
 
-/* Light is Console's paper colourway: warm paper, near-black ink, the same two signals darkened. */
-@media (prefers-color-scheme: light) {
-    :root:not([data-theme="dark"]) {
-        --bg: oklch(98% 0.006 85);
-        --bg-alt: oklch(95.5% 0.007 85);
-        --bg-hover: oklch(93% 0.008 85);
-        --bg-active: oklch(100% 0 0);
-        --border: oklch(88% 0.008 85);
-        --text: oklch(19% 0.01 60);
-        --text-dim: oklch(45% 0.012 60);
-        --btn-bg: oklch(100% 0 0);
-        --btn-border: oklch(78% 0.01 85);
-        --accent: oklch(54% 0.14 70);
-        --accent-text: oklch(48% 0.13 70);
-        --accent-soft: oklch(93% 0.05 80);
-        --on-accent: oklch(99% 0.01 85);
-        --cool: oklch(52% 0.14 250);
-        --cool-soft: oklch(93% 0.03 250);
-        --focus: oklch(52% 0.14 250);
-        --add: oklch(48% 0.13 150);
-        --del: oklch(52% 0.18 25);
-        --mod: oklch(52% 0.14 250);
-        --rename: oklch(52% 0.14 250);
-        --untracked: oklch(45% 0.012 60);
-        --add-bg: oklch(95% 0.04 150);
-        --del-bg: oklch(95% 0.03 25);
-        --word-add: oklch(88% 0.08 150);
-        --word-del: oklch(88% 0.07 25);
-        --hunk-bg: oklch(95.5% 0.007 85);
-        --hunk-text: oklch(52% 0.14 250);
-        --warn-bg: oklch(93% 0.05 80);
-        --warn-text: oklch(40% 0.1 70);
-        --error-bg: oklch(95% 0.03 25);
-        --error-text: oklch(42% 0.15 25);
-        --check-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4 8.5l2.5 2.5L12 5.5' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-        --scrim: oklch(19% 0.01 60 / 0.25);
-        --shiki-token-keyword: oklch(48% 0.17 300);
-        --shiki-token-function: oklch(48% 0.14 250);
-        --shiki-token-string: oklch(47% 0.09 185);
-        --shiki-token-string-expression: oklch(47% 0.09 185);
-        --shiki-token-constant: oklch(50% 0.17 340);
-        --shiki-token-parameter: oklch(30% 0.02 60);
-        --shiki-token-punctuation: oklch(45% 0.012 60);
-        --shiki-token-comment: oklch(55% 0.012 60);
-        --shiki-token-link: oklch(48% 0.15 250);
-        color-scheme: light;
+/* Dark is Cute at night: the same navy as the "all reviewed" card, with the signals lightened. */
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+        --bg: #1B1850;
+        --bg-alt: #24206A;
+        --bg-hover: #2F2A80;
+        --bg-active: #15133F;
+        --border: #3A3590;
+        --text: #F1EFFC;
+        --text-dim: #B3AEDD;
+        --btn-bg: #24206A;
+        --btn-border: #5650B0;
+        --accent: #FF6B73;
+        --accent-text: #FF8A90;
+        --accent-soft: #432058;
+        --on-accent: #1B1850;
+        --done-soft: #4A4015;
+        --done-text: #FFE28A;
+        --cool: #A9A3F5;
+        --cool-soft: #34308A;
+        --focus: #FFD447;
+        --add: #6FD6A1;
+        --del: #FF8A90;
+        --mod: #A9A3F5;
+        --rename: #A9A3F5;
+        --untracked: #B3AEDD;
+        --add-bg: #1E3A45;
+        --del-bg: #432058;
+        --word-add: #2F6B5A;
+        --word-del: #7A2F6A;
+        --hunk-bg: #24206A;
+        --hunk-text: #B3AEDD;
+        --warn-bg: #4A4015;
+        --warn-text: #FFE28A;
+        --error-bg: #432058;
+        --error-text: #FFB3B8;
+        --scrim: rgb(10 8 40 / 0.55);
+        --shiki-token-keyword: #C8A2FF;
+        --shiki-token-function: #8FB4FF;
+        --shiki-token-string: #FFB27A;
+        --shiki-token-string-expression: #FFB27A;
+        --shiki-token-constant: #FF9CCB;
+        --shiki-token-parameter: #E4E1F8;
+        --shiki-token-punctuation: #B3AEDD;
+        --shiki-token-comment: #8C87C4;
+        --shiki-token-link: #8FB4FF;
+        --m-ink: #C9C4F0;
+        --m-lilac: #2F2A80;
+        color-scheme: dark;
     }
 }
 
@@ -316,10 +336,10 @@ body {
 }
 
 .row .review:checked {
-    border-color: var(--accent);
+    border-color: var(--done);
     background:
         var(--check-icon) center / 12px no-repeat,
-        var(--accent);
+        var(--done);
 }
 
 .caret {
@@ -1092,8 +1112,9 @@ body {
 
 .landing h1 {
     margin: 0;
+    font-family: var(--font-title);
     font-size: clamp(32px, 5vw, 44px);
-    font-weight: 500;
+    font-weight: 400;
     line-height: 1.04;
     letter-spacing: -0.03em;
     text-wrap: balance;
@@ -1448,7 +1469,7 @@ body {
 }
 
 .tick.on {
-    background: var(--accent);
+    background: var(--done);
 }
 
 .meter-bar {
@@ -1461,7 +1482,7 @@ body {
 .meter-bar > span {
     position: absolute;
     inset: 0 auto 0 0;
-    background: var(--accent);
+    background: var(--done);
 }
 
 .meter-text {
@@ -1539,7 +1560,7 @@ body {
 }
 
 .ruler-tick.done {
-    background: var(--accent);
+    background: var(--done);
 }
 
 .ruler-tick.changed {
@@ -1568,27 +1589,39 @@ body {
     display: flex;
     flex-shrink: 0;
     align-items: center;
-    justify-content: space-between;
     gap: 12px;
-    padding: 10px 14px;
-    background: var(--accent-soft);
-    border-bottom: 1px solid var(--accent);
-    color: var(--accent-text);
-    font-weight: 500;
+    padding: 6px 14px;
+    /* Night on both colourways: the confetti reads against it. */
+    background: var(--night);
+    border-bottom: 2px solid var(--done);
+    color: var(--on-night);
+    font-family: var(--font-title);
+    font-size: 17px;
+}
+
+.passed .mascot {
+    flex-shrink: 0;
+    width: 75px;
+    height: 55px;
+}
+
+.passed span {
+    flex: 1;
 }
 
 .passed button {
     color: var(--text);
+    font-family: var(--font-ui);
 }
 
 .review-toggle[aria-pressed="true"] {
-    border-color: var(--accent);
-    background: var(--accent);
-    color: var(--on-accent);
+    border-color: var(--done);
+    background: var(--done);
+    color: var(--on-done);
 }
 
 .review-toggle[aria-pressed="true"] kbd {
-    border-color: var(--on-accent);
+    border-color: var(--on-done);
     background: transparent;
     color: inherit;
 }
@@ -1698,8 +1731,8 @@ body {
 
 .search-text mark {
     border-radius: 2px;
-    background: var(--accent-soft);
-    color: var(--accent-text);
+    background: var(--done-soft);
+    color: var(--done-text);
 }
 
 .search-foot {
@@ -1743,5 +1776,122 @@ body {
     .jumped {
         animation: none;
         box-shadow: inset 3px 0 0 var(--cool);
+    }
+}
+
+/* Mascots: one flat figure per state. Each animation has a still fallback under reduced motion. */
+.mascot {
+    display: block;
+    overflow: visible;
+}
+
+.mascot-state {
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+}
+
+.landing .mascot {
+    margin-bottom: 8px;
+}
+
+.mascot-breathe,
+.mascot-bob,
+.mascot-hop,
+.mascot-blink,
+.mascot-squish {
+    transform-box: fill-box;
+    transform-origin: 50% 100%;
+}
+
+.mascot-breathe { animation: mascot-breathe 3s ease-in-out infinite; }
+.mascot-bob { animation: mascot-bob 2.4s ease-in-out infinite; }
+.mascot-hop { animation: mascot-hop 1.6s cubic-bezier(0.3, 0, 0.4, 1) infinite; }
+.mascot-blink { transform-origin: center; animation: mascot-blink 4s infinite; }
+.mascot-squish { animation: mascot-squish 0.6s ease-in-out infinite; }
+.mascot-look { animation: mascot-look 2.8s ease-in-out infinite; }
+.mascot-sweep { transform-origin: 20px 20px; animation: mascot-sweep 2.8s ease-in-out infinite; }
+.mascot-z { font-family: var(--font-title); fill: var(--text-dim); opacity: 0; animation: mascot-z 2.6s ease-out infinite; }
+.mascot-bit { opacity: 0; animation: mascot-fall 1.6s ease-out infinite; }
+
+@keyframes mascot-breathe { 50% { transform: scale(1.03, 0.97); } }
+@keyframes mascot-bob { 50% { transform: translateY(-3px); } }
+@keyframes mascot-blink { 0%, 92%, 100% { transform: scaleY(1); } 95% { transform: scaleY(0.1); } }
+@keyframes mascot-squish { 50% { transform: scale(1.08, 0.94); } }
+@keyframes mascot-look { 0%, 100% { transform: translateX(1.5px); } 50% { transform: translateX(-1.5px); } }
+@keyframes mascot-sweep {
+    0%, 100% { transform: translate(0, 0) rotate(-8deg); }
+    50% { transform: translate(-14px, 4px) rotate(10deg); }
+}
+@keyframes mascot-z {
+    0% { opacity: 0; transform: translate(0, 0) scale(0.6); }
+    30% { opacity: 1; }
+    100% { opacity: 0; transform: translate(10px, -22px) scale(1.1); }
+}
+@keyframes mascot-hop {
+    0%, 100% { transform: translateY(0) scale(1.04, 0.96); }
+    15% { transform: translateY(0) scale(0.96, 1.04); }
+    45% { transform: translateY(-16px); }
+    75% { transform: translateY(0) scale(1.05, 0.95); }
+}
+@keyframes mascot-fall {
+    0% { opacity: 0; transform: translate(0, 0) rotate(0); }
+    20% { opacity: 1; }
+    100% { opacity: 0; transform: translate(var(--dx), 40px) rotate(200deg); }
+}
+
+/* The snail crawls a 220px track and leaves a sun-yellow trail. */
+.mascot-snail {
+    position: relative;
+    width: 220px;
+    height: 48px;
+}
+
+.mascot-track {
+    position: absolute;
+    inset: auto 0 6px;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--border);
+}
+
+.mascot-trail {
+    width: 80%;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--done);
+    transform-origin: left;
+    animation: mascot-trail 6s linear infinite;
+}
+
+.mascot-crawl {
+    position: absolute;
+    bottom: 10px;
+    left: 0;
+    animation: mascot-crawl 6s linear infinite;
+}
+
+@keyframes mascot-trail { from { transform: scaleX(0.05); } to { transform: scaleX(1); } }
+@keyframes mascot-crawl { from { transform: translateX(0); } to { transform: translateX(160px); } }
+
+@media (prefers-reduced-motion: reduce) {
+    .mascot *,
+    .mascot-snail * {
+        animation: none !important;
+    }
+
+    .mascot-bit,
+    .mascot-z {
+        opacity: 0.8;
+    }
+
+    .mascot-trail {
+        transform: scaleX(0.5);
+    }
+
+    .mascot-crawl {
+        transform: translateX(80px);
     }
 }

@@ -37,6 +37,7 @@ import {Button} from './ui/button';
 import {Kbd} from './ui/kbd';
 import {RepoPicker} from './repo-picker';
 import {Landing} from './landing';
+import {OwlHop, OwlSearch, OwlTray, Snail} from './mascots';
 import {TerminalPanel} from './terminal';
 
 const PR_POLL_MS = 60000;
@@ -945,12 +946,14 @@ function App() {
                                     <Button onClick={() => setPicked([])} title="Clear selection (Esc)">Clear</Button>
                                 </div>
                             )}
-                            {loading && changes.length === 0 && <div className="empty">Fetching pull request…</div>}
+                            {loading && changes.length === 0 && (
+                                <Empty title="Fetching pull request…" mascot={<Snail/>}/>
+                            )}
                             {!loading && target && changes.length === 0 && (
-                                <Empty title="No changed files" hint="This pull request changes nothing."/>
+                                <Empty title="No changed files" hint="This pull request changes nothing." mascot={<OwlTray/>}/>
                             )}
                             {changes.length > 0 && visibleChanges.length === 0 && (
-                                <Empty title="No matches" hint={`Nothing matches "${filter}".`}/>
+                                <Empty title="No matches" hint={`Nothing matches "${filter}".`} mascot={<OwlSearch/>}/>
                             )}
                             {tree.length > 0 && (
                                 <TreeList
@@ -973,6 +976,7 @@ function App() {
                         <main className="diff">
                             {changes.length > 0 && reviewedCount === changes.length && (
                                 <div className="passed" role="status">
+                                    <OwlHop/>
                                     <span>All {changes.length} files reviewed. Approve or request changes on GitHub.</span>
                                     <Button onClick={() => BrowserOpenURL(pr.url)}>Open on GitHub</Button>
                                 </div>
@@ -1040,9 +1044,10 @@ function storedReviewedCount(repo: string, pr: PR): number {
     return [...paths].filter(p => isReviewed(saved, p)).length;
 }
 
-function Empty({title, hint, children}: {title: string; hint?: string; children?: ReactNode}) {
+function Empty({title, hint, mascot, children}: {title: string; hint?: string; mascot?: ReactNode; children?: ReactNode}) {
     return (
         <div className="empty">
+            {mascot}
             <div className="empty-title">{title}</div>
             {hint && <div className="empty-hint">{hint}</div>}
             {children}
