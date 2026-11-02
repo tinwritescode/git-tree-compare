@@ -44,6 +44,18 @@ export function timeAgo(iso: string, now = Date.now()): string {
     return 'just now';
 }
 
+// inkShare turns a line count into a percentage of the overprint bar. The scale is logarithmic
+// so a 10-line fix stays visible beside a 10,000-line migration.
+export function inkShare(lines: number): number {
+    return Math.min(100, (Math.log10(1 + lines) / 4) * 100);
+}
+
+// tickWeight sizes a file on the ruler. The square root shows where the work is
+// without letting one large file squeeze the others away.
+export function tickWeight(lines: number): number {
+    return Math.sqrt(1 + lines);
+}
+
 export interface SummaryInput {
     title: string;
     files: {path: string; status: string; added: number; deleted: number; oldPath?: string}[];

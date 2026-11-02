@@ -5,7 +5,7 @@ export type ButtonVariant = 'default' | 'primary' | 'ghost' | 'link';
 export type ButtonSize = 'md' | 'icon';
 
 export const base =
-    'inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border text-[12.5px] font-normal leading-none [font-family:var(--font-ui)] [color:inherit] cursor-pointer transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] disabled:cursor-default disabled:opacity-40';
+    'inline-flex items-center gap-1.5 whitespace-nowrap rounded-[var(--radius)] border text-[12.5px] font-normal leading-none [font-family:var(--font-ui)] [color:inherit] cursor-pointer transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--focus)] disabled:cursor-default disabled:opacity-40';
 
 export const variants: Record<ButtonVariant, string> = {
     // Quiet by default: a hairline border and a faint lift. The border turns accent on hover.
@@ -15,7 +15,7 @@ export const variants: Record<ButtonVariant, string> = {
     // Sits on a tinted strip, such as the error bar, and shows its edge only on hover.
     ghost: 'border-transparent bg-transparent enabled:hover:border-[var(--btn-border)] enabled:hover:bg-[var(--bg-hover)]',
     // Plain text that acts like a button, such as "Open on GitHub".
-    link: 'border-0 bg-transparent px-0.5 py-0 [color:var(--accent)]',
+    link: 'border-0 bg-transparent px-0.5 py-0 [color:var(--accent-text)]',
 };
 
 export const sizes: Record<ButtonSize, string> = {

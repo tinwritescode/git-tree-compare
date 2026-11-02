@@ -1,8 +1,9 @@
-@import "@fontsource/ibm-plex-sans/400.css";
-@import "@fontsource/ibm-plex-sans/500.css";
-@import "@fontsource/ibm-plex-sans/600.css";
-@import "@fontsource/ibm-plex-mono/400.css";
-@import "@fontsource/ibm-plex-mono/500.css";
+@import "@fontsource/familjen-grotesk/400.css";
+@import "@fontsource/familjen-grotesk/500.css";
+@import "@fontsource/familjen-grotesk/600.css";
+@import "@fontsource/familjen-grotesk/700.css";
+@import "@fontsource/sometype-mono/400.css";
+@import "@fontsource/sometype-mono/700.css";
 
 /*
  * Tailwind utilities, without its preflight: the existing styles below keep their look.
@@ -13,74 +14,85 @@
 
 /*
  * Tokens first, so the two themes differ only in values.
- * Blue ink is the desk, marigold means one thing only: reviewed.
- * Dark follows the system unless it asks for light.
+ * Reviewing is proofing, so the palette is a press run: cyan adds, magenta removes,
+ * yellow means reviewed and nothing else. Everything else is one blue ink.
  */
 :root {
-    --bg: #161c26;
-    --bg-alt: #1c2430;
-    --bg-hover: #242e3c;
-    --bg-active: #2c3848;
-    --border: #2d3847;
-    --text: #e0e6ee;
-    --text-dim: #8c9aad;
-    --btn-bg: #1c2430;
-    --btn-border: #3d4b5e;
-    --accent: #f0b64a;
-    --on-accent: #161c26;
-    --add: #6fc4b2;
-    --del: #ee8f98;
-    --mod: #8c9aad;
-    --rename: #9db7e8;
-    --untracked: #8c9aad;
-    --add-bg: rgba(111, 196, 178, 0.1);
-    --del-bg: rgba(238, 143, 152, 0.1);
-    --word-add: rgba(111, 196, 178, 0.3);
-    --word-del: rgba(238, 143, 152, 0.3);
-    --hunk-bg: #1c2430;
-    --hunk-text: #9db7e8;
-    --warn-bg: #33291a;
-    --warn-text: #f0c67a;
-    --error-bg: #3a2228;
-    --error-text: #f5b9bf;
+    --bg: #0e2038;
+    --bg-alt: #142a47;
+    --bg-hover: #1c3658;
+    --bg-active: #25436b;
+    --border: #27466f;
+    --text: #dbe7f5;
+    --text-dim: #8aa4c4;
+    --btn-bg: #142a47;
+    --btn-border: #3b5f8c;
+    --accent: #ffe14d;
+    --accent-text: #ffe14d;
+    --on-accent: #0e2038;
+    --focus: #ffffff;
+    --add: #38d6f0;
+    --del: #ff5fa8;
+    --mod: #8aa4c4;
+    --rename: #a9c4ee;
+    --untracked: #8aa4c4;
+    --add-bg: rgba(56, 214, 240, 0.09);
+    --del-bg: rgba(255, 95, 168, 0.09);
+    --word-add: rgba(56, 214, 240, 0.3);
+    --word-del: rgba(255, 95, 168, 0.3);
+    --hunk-bg: #142a47;
+    --hunk-text: #a9c4ee;
+    --warn-bg: #3a3320;
+    --warn-text: #ffe14d;
+    --error-bg: #431f3f;
+    --error-text: #ffc0da;
+    --ink-blend: screen;
+    --ink-add: #38d6f0;
+    --ink-del: #ff5fa8;
     color-scheme: dark;
 
-    --font-ui: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, sans-serif;
-    --font-mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+    --font-ui: "Familjen Grotesk", -apple-system, BlinkMacSystemFont, sans-serif;
+    --font-mono: "Sometype Mono", ui-monospace, Menlo, monospace;
     --font-title: var(--font-ui);
-    --radius: 2px;
-    --radius-lg: 3px;
-    --tick-height: 12px;
+    --radius: 1px;
+    --radius-lg: 2px;
+    --tick-height: 16px;
 }
 
+/* Light is a blueline proof: pale paper, and all type in blue ink rather than black. */
 @media (prefers-color-scheme: light) {
     :root:not([data-theme="dark"]) {
-        --bg: #f2f4f7;
-        --bg-alt: #e7ebf0;
-        --bg-hover: #dde3ea;
-        --bg-active: #d0d8e2;
-        --border: #d3dae3;
-        --text: #18202b;
-        --text-dim: #566375;
-        --btn-bg: #fafbfc;
-        --btn-border: #b9c3cf;
-        --accent: #a66a00;
-        --on-accent: #ffffff;
-        --add: #14745f;
-        --del: #b02a3a;
-        --mod: #566375;
+        --bg: #f3f7fc;
+        --bg-alt: #e6eef8;
+        --bg-hover: #dbe6f4;
+        --bg-active: #cbdaee;
+        --border: #c7d7ea;
+        --text: #12305a;
+        --text-dim: #4d6a91;
+        --btn-bg: #fbfdff;
+        --btn-border: #a9bfdb;
+        --accent: #ffdc2e;
+        --accent-text: #12305a;
+        --on-accent: #12305a;
+        --focus: #12305a;
+        --add: #00708a;
+        --del: #c2127a;
+        --mod: #4d6a91;
         --rename: #2f5aa8;
-        --untracked: #566375;
-        --add-bg: rgba(20, 116, 95, 0.1);
-        --del-bg: rgba(176, 42, 58, 0.09);
-        --word-add: rgba(20, 116, 95, 0.26);
-        --word-del: rgba(176, 42, 58, 0.24);
-        --hunk-bg: #e7ebf0;
+        --untracked: #4d6a91;
+        --add-bg: rgba(0, 174, 214, 0.12);
+        --del-bg: rgba(226, 0, 122, 0.08);
+        --word-add: rgba(0, 174, 214, 0.32);
+        --word-del: rgba(226, 0, 122, 0.24);
+        --hunk-bg: #e6eef8;
         --hunk-text: #2f5aa8;
-        --warn-bg: #f7ead0;
-        --warn-text: #6b4600;
-        --error-bg: #f8e0e2;
-        --error-text: #7c1d2a;
+        --warn-bg: #fff4bf;
+        --warn-text: #5c4800;
+        --error-bg: #fbe0ee;
+        --error-text: #8a0c56;
+        --ink-blend: multiply;
+        --ink-add: #12c4e6;
+        --ink-del: #f0309a;
         color-scheme: light;
     }
 }
@@ -110,7 +122,7 @@ input {
 
 /* Keyboard users need a ring that is visible on every surface. */
 :focus-visible {
-    outline: 2px solid var(--accent);
+    outline: 2px solid var(--focus);
     outline-offset: 1px;
 }
 
@@ -243,13 +255,27 @@ input {
     color: var(--text-dim);
 }
 
+/* The checkbox is a registration target: empty until the file is reviewed, then filled with yellow. */
 .row .review {
+    appearance: none;
     flex: none;
-    width: 16px;
-    height: 16px;
-    margin: 0;
-    accent-color: var(--accent);
+    width: 14px;
+    height: 14px;
+    margin: 0 1px;
+    border: 1px solid var(--text-dim);
+    border-radius: 50%;
+    background:
+        linear-gradient(var(--text-dim), var(--text-dim)) center / 1px 100% no-repeat,
+        linear-gradient(var(--text-dim), var(--text-dim)) center / 100% 1px no-repeat;
     cursor: pointer;
+}
+
+.row .review:checked {
+    border-color: var(--accent);
+    background:
+        linear-gradient(var(--on-accent), var(--on-accent)) center / 1px 100% no-repeat,
+        linear-gradient(var(--on-accent), var(--on-accent)) center / 100% 1px no-repeat,
+        var(--accent);
 }
 
 .caret {
@@ -634,7 +660,7 @@ input {
 }
 
 .note-dot {
-    color: var(--accent);
+    color: var(--accent-text);
     font-size: 9px;
 }
 
@@ -811,7 +837,7 @@ input {
     background: none;
     border: 0;
     padding: 2px 0;
-    color: var(--accent);
+    color: var(--accent-text);
     font-family: var(--font-mono);
     font-size: 12px;
     text-align: left;
@@ -1009,21 +1035,15 @@ kbd {
 }
 
 .landing-inner {
-    width: min(520px, 100%);
-}
-
-.landing-logo {
-    display: block;
-    width: 56px;
-    height: 56px;
-    margin-bottom: 16px;
+    width: min(640px, 100%);
 }
 
 .landing h1 {
-    margin: 0 0 6px;
-    font-family: var(--font-title);
-    font-size: 30px;
-    font-weight: 500;
+    margin: 0 0 16px;
+    font-size: clamp(40px, 8vw, 72px);
+    font-weight: 700;
+    line-height: 1;
+    letter-spacing: -0.02em;
 }
 
 .landing-lede {
@@ -1104,7 +1124,7 @@ kbd {
     padding: 0;
     background: none;
     border: none;
-    color: var(--accent);
+    color: var(--accent-text);
     cursor: pointer;
 }
 
@@ -1163,13 +1183,14 @@ kbd {
     padding: 0;
     background: none;
     color: var(--text);
-    font-size: 15px;
-    font-weight: 600;
+    font-size: 19px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
     cursor: pointer;
 }
 
 .prs-repo:hover {
-    color: var(--accent);
+    color: var(--accent-text);
 }
 
 .prs-count {
@@ -1231,7 +1252,7 @@ kbd {
 
 .pr-row {
     display: grid;
-    grid-template-columns: 56px minmax(0, 1fr) 96px 150px;
+    grid-template-columns: 56px minmax(0, 1fr) 132px 150px;
     align-items: center;
     gap: 12px;
     width: 100%;
@@ -1250,7 +1271,7 @@ kbd {
 }
 
 .pr-row:focus-visible {
-    outline: 2px solid var(--accent);
+    outline: 2px solid var(--focus);
     outline-offset: -2px;
 }
 
@@ -1284,13 +1305,6 @@ kbd {
     text-overflow: ellipsis;
 }
 
-.pr-size {
-    font-family: var(--font-mono);
-    font-size: 12px;
-    text-align: right;
-    white-space: nowrap;
-}
-
 .pr-tag {
     flex: none;
     margin-left: 8px;
@@ -1309,6 +1323,40 @@ kbd {
 
 .pr-tag.good {
     color: var(--add);
+}
+
+/* Size as two inks printed over each other, so overlap reads as churn. */
+.overprint {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.overprint-bars {
+    position: relative;
+    display: block;
+    height: 8px;
+    isolation: isolate;
+}
+
+.overprint-bars > span {
+    position: absolute;
+    inset: 0 auto 0 0;
+    mix-blend-mode: var(--ink-blend);
+}
+
+.ink-add {
+    background: var(--ink-add);
+}
+
+.ink-del {
+    background: var(--ink-del);
+}
+
+.overprint-text {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    white-space: nowrap;
 }
 
 /* Progress: one tick per file. */
@@ -1382,7 +1430,7 @@ kbd {
 }
 
 .review-count strong {
-    color: var(--accent);
+    color: var(--accent-text);
     font-weight: 500;
 }
 
@@ -1396,18 +1444,32 @@ kbd {
 .ruler {
     display: flex;
     flex-shrink: 0;
-    gap: 1px;
+    align-items: stretch;
+    gap: 2px;
     height: var(--tick-height);
-    padding: 0 12px;
+    padding: 0 12px 4px;
     border-bottom: 1px solid var(--border);
+}
+
+.ruler .reg-mark {
+    align-self: center;
+    margin-right: 6px;
+}
+
+.reg-mark {
+    flex: none;
+    width: 16px;
+    height: 16px;
+    color: var(--text-dim);
 }
 
 .ruler-tick {
     position: relative;
     flex: 1 1 0;
-    min-width: 1px;
+    min-width: 2px;
     padding: 0;
     border: 0;
+    border-radius: 0;
     background: var(--bg-active);
     cursor: pointer;
     transition: background-color 120ms ease-out;
@@ -1428,26 +1490,109 @@ kbd {
 .ruler-tick.current::after {
     content: "";
     position: absolute;
-    inset: auto 0 -1px;
-    height: 3px;
+    inset: auto 0 -4px;
+    height: 2px;
     background: var(--text);
 }
 
 .ruler-tick:focus-visible {
-    outline: 2px solid var(--text);
+    outline: 2px solid var(--focus);
     outline-offset: 1px;
+}
+
+/* Pressing x leaves a rubber stamp on the sheet. It answers the key, and clears itself. */
+.diff {
+    position: relative;
+}
+
+.stamp {
+    position: absolute;
+    top: 72px;
+    right: 48px;
+    z-index: 4;
+    padding: 6px 14px 8px;
+    border: 3px solid var(--accent);
+    outline: 1px solid var(--accent);
+    outline-offset: 2px;
+    color: var(--accent);
+    font-family: var(--font-mono);
+    font-size: 34px;
+    font-weight: 700;
+    line-height: 1;
+    mix-blend-mode: var(--ink-blend);
+    pointer-events: none;
+    transform: rotate(-7deg);
+    animation: stamp 1100ms cubic-bezier(0.2, 0.9, 0.3, 1) forwards;
+}
+
+@keyframes stamp {
+    0% {
+        opacity: 0;
+        transform: rotate(-7deg) scale(1.7);
+    }
+    10% {
+        opacity: 1;
+        transform: rotate(-7deg) scale(1);
+    }
+    70% {
+        opacity: 1;
+        transform: rotate(-7deg) scale(1);
+    }
+    100% {
+        opacity: 0;
+        transform: rotate(-7deg) scale(1);
+    }
+}
+
+.passed {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 8px 12px;
+    background: var(--accent);
+    color: var(--on-accent);
+    font-weight: 600;
+}
+
+.passed button {
+    color: var(--text);
+}
+
+/* The landing's press bar draws once, the only motion nobody asked for. */
+.landing-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 28px;
+}
+
+.landing-bar > span {
+    flex: 1;
+    height: 10px;
+    background: linear-gradient(90deg,
+        var(--add) 0 25%, var(--del) 25% 50%, var(--accent) 50% 75%, var(--text) 75% 100%);
+    transform-origin: left;
+    animation: press-bar 700ms cubic-bezier(0.2, 0.9, 0.3, 1);
+}
+
+@keyframes press-bar {
+    from {
+        transform: scaleX(0);
+    }
 }
 
 .review-toggle[aria-pressed="true"] {
     border-color: var(--accent);
-    color: var(--accent);
+    background: var(--accent);
+    color: var(--on-accent);
 }
 
-.review-toggle[aria-pressed="true"]::before {
-    content: "";
-    width: 7px;
-    height: 7px;
-    background: var(--accent);
+.review-toggle[aria-pressed="true"] kbd {
+    border-color: var(--on-accent);
+    background: transparent;
+    color: inherit;
 }
 
 .row.reviewed {
@@ -1483,5 +1628,13 @@ kbd {
 @media (prefers-reduced-motion: reduce) {
     .ruler-tick {
         transition: none;
+    }
+
+    .stamp {
+        animation-timing-function: step-end;
+    }
+
+    .landing-bar > span {
+        animation: none;
     }
 }

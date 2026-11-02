@@ -1,5 +1,5 @@
 import type {ReactNode} from 'react';
-import logo from './assets/logo.svg';
+import {RegistrationMark} from './prs';
 import {basename} from './util';
 
 export interface LandingProps {
@@ -18,9 +18,9 @@ export function Landing({last, recent, error, onOpen, onPick, onShortcuts, banne
         <div className="landing">
             <div className="landing-inner">
                 {banner}
-                <img className="landing-logo" src={logo} alt=""/>
+                <div className="landing-bar" aria-hidden="true"><RegistrationMark/><span/></div>
                 <h1>git-tree-compare</h1>
-                <p className="landing-lede">Review your open pull requests, file by file. Press x and GitHub knows.</p>
+                <p className="landing-lede">Review open pull requests file by file. Press x to mark a file reviewed, here and on GitHub.</p>
 
                 {error && <div className="error" role="alert">{error}</div>}
 
