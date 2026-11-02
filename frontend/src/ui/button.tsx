@@ -11,7 +11,7 @@ export const variants: Record<ButtonVariant, string> = {
     // Quiet by default: a hairline border and a faint lift. The border turns accent on hover.
     default: 'border-[var(--border)] bg-[var(--btn-bg)] shadow-[0_1px_1px_rgba(0,0,0,0.04)] enabled:hover:border-[var(--btn-border)] enabled:hover:bg-[var(--bg-hover)]',
     // The main action of a view. Its key chips invert so they stay readable on the accent.
-    primary: 'border-[var(--accent)] bg-[var(--accent)] font-medium shadow-none [color:var(--bg)] enabled:hover:brightness-110 [&_kbd]:border-transparent [&_kbd]:bg-white/20 [&_kbd]:[color:inherit]',
+    primary: 'border-[var(--accent)] bg-[var(--accent)] font-medium shadow-none [color:var(--on-accent)] enabled:hover:brightness-110 [&_kbd]:border-transparent [&_kbd]:bg-white/20 [&_kbd]:[color:inherit]',
     // Sits on a tinted strip, such as the error bar, and shows its edge only on hover.
     ghost: 'border-transparent bg-transparent enabled:hover:border-[var(--btn-border)] enabled:hover:bg-[var(--bg-hover)]',
     // Plain text that acts like a button, such as "Open on GitHub".

@@ -149,6 +149,36 @@ function PRRow({pr, selected, reviewed, onOpen, onHover}: {
     );
 }
 
+// ReviewRuler is the whole pull request at a glance: one tick per file, in tree order, lit when reviewed.
+export function ReviewRuler({files, current, reviewed, changed, onPick}: {
+    files: {path: string}[];
+    current?: string;
+    reviewed: Record<string, string>;
+    changed: Set<string>;
+    onPick: (path: string) => void;
+}) {
+    return (
+        <nav className="ruler" aria-label="Files in this pull request">
+            {files.map(f => {
+                const state = reviewed[f.path] ? 'reviewed' : changed.has(f.path) ? 'changed since review' : 'not reviewed';
+                const classes = ['ruler-tick', reviewed[f.path] && 'done', changed.has(f.path) && 'changed', f.path === current && 'current']
+                    .filter(Boolean).join(' ');
+                return (
+                    <button
+                        key={f.path}
+                        className={classes}
+                        aria-label={`${f.path}, ${state}`}
+                        aria-current={f.path === current ? 'true' : undefined}
+                        title={f.path}
+                        tabIndex={-1}
+                        onClick={() => onPick(f.path)}
+                    />
+                );
+            })}
+        </nav>
+    );
+}
+
 // ReviewMeter shows review progress with one tick per file, or a bar when there are too many to count.
 export function ReviewMeter({done, total}: {done: number; total: number}) {
     const label = `${done} of ${total} files reviewed`;

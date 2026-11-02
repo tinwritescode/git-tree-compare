@@ -22,7 +22,7 @@ import {BrowserOpenURL, EventsOn} from '../wailsjs/runtime/runtime';
 import {parseDiff, toSplitRows, Line, SplitRow} from './diff';
 import {EditorMenu} from './editor-menu';
 import {Command, CommandPalette, CommandPanel, CommentBody, CommentsPanel, FileMenu, PRDiscussion, PRThread, QuickOpen, UpdateBanner} from './panels';
-import {PR, PRList, ReviewMeter} from './prs';
+import {PR, PRList, ReviewRuler} from './prs';
 import {
     applyServerStates, emptyRecord, isChangedSinceReview, isReviewed, nextBatch, nextUnreviewed, ReviewRecord, settleBatch, toggleReviewed,
 } from './review';
@@ -821,7 +821,7 @@ function App() {
             {pr && (
                 <>
                     <header className="review-bar">
-                        <Button onClick={closeReview} title="All pull requests (p)">Pull requests</Button>
+                        <Button onClick={closeReview} title="All pull requests (p)">All PRs</Button>
                         <div className="review-title">
                             <span className="review-name"><span className="pr-num">{pr.number}</span> {pr.title}</span>
                             <span className="review-sub">
@@ -835,12 +835,24 @@ function App() {
                                 {unsynced.size} not on GitHub yet, retrying
                             </span>
                         )}
-                        <ReviewMeter done={reviewedCount} total={changes.length}/>
+                        <span className="review-count" title="Files reviewed"><strong>{reviewedCount}</strong>/{changes.length}</span>
                         <Button onClick={toggleComments} aria-pressed={commentsOpen} title="Review comments (c)">
                             Comments{unresolvedCount > 0 ? ` ${unresolvedCount}` : ''}
                         </Button>
                         <Button onClick={() => setPaletteOpen(true)} title="All commands">Commands <Kbd>⌘K</Kbd></Button>
                     </header>
+
+                    <ReviewRuler
+                        files={files}
+                        current={selected?.path}
+                        reviewed={reviewed}
+                        changed={changedSinceReview}
+                        onPick={path => {
+                            const file = changes.find(c => c.path === path);
+                            if (file) setSelected(file);
+                            setPicked([]);
+                        }}
+                    />
 
                     <div className="panes">
                         <aside className="tree">
@@ -1073,18 +1085,6 @@ function DiffPanel(props: {
     onOpenURL: (url: string) => void;
 }) {
     const {file, text, split, note, noteOpen} = props;
-    const [copied, setCopied] = useState(false);
-
-    async function copyPath() {
-        try {
-            await navigator.clipboard.writeText(file.path);
-            setCopied(true);
-            setTimeout(() => setCopied(false), 1200);
-        } catch {
-            // Clipboard can be blocked; nothing else to do.
-        }
-    }
-
     return (
         <>
             <div className="diff-header">
@@ -1111,7 +1111,6 @@ function DiffPanel(props: {
                     <Button onClick={() => props.onOpenURL(props.prFileURL)} title="Open this file's diff on the pull request">Open on GitHub</Button>
                 )}
                 <EditorMenu editors={props.editors} current={props.defaultEditor} disabled={file.status === 'D'} onOpen={props.onOpenIn}/>
-                <Button onClick={copyPath}>{copied ? 'Copied' : 'Copy path'}</Button>
             </div>
             {noteOpen && (
                 <textarea
