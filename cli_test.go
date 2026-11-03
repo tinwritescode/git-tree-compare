@@ -6,17 +6,20 @@ func TestParseLaunchArgs(t *testing.T) {
 	tests := []struct {
 		name string
 		args []string
-		want string
+		want Launch
 	}{
-		{"none", nil, ""},
-		{"path only", []string{"/repo"}, "/repo"},
-		{"unknown flag ignored", []string{"--new-thing", "/repo"}, "/repo"},
-		{"first path wins", []string{"/repo", "/other"}, "/repo"},
+		{"none", nil, Launch{}},
+		{"path only", []string{"/repo"}, Launch{Path: "/repo"}},
+		{"unknown flag ignored", []string{"--new-thing", "/repo"}, Launch{Path: "/repo"}},
+		{"first path wins", []string{"/repo", "/other"}, Launch{Path: "/repo"}},
+		{"commit", []string{"/repo", "--commit", "a1b2c3d"}, Launch{Path: "/repo", Commit: "a1b2c3d"}},
+		{"branch and base", []string{"--branch=feat/x", "/repo", "--base", "staging"}, Launch{Path: "/repo", Branch: "feat/x", Base: "staging"}},
+		{"flag without value", []string{"/repo", "--commit"}, Launch{Path: "/repo"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := parseLaunchArgs(tt.args); got != tt.want {
-				t.Fatalf("parseLaunchArgs(%v) = %q, want %q", tt.args, got, tt.want)
+				t.Fatalf("parseLaunchArgs(%v) = %+v, want %+v", tt.args, got, tt.want)
 			}
 		})
 	}

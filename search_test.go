@@ -11,14 +11,7 @@ import (
 func searchRepo(t *testing.T) (repo, head string) {
 	t.Helper()
 	repo = t.TempDir()
-	git := func(args ...string) string {
-		t.Helper()
-		out, err := runGit(repo, append([]string{"-c", "user.name=t", "-c", "user.email=t@t"}, args...)...)
-		if err != nil {
-			t.Fatalf("git %v: %v", args, err)
-		}
-		return strings.TrimSpace(out)
-	}
+	git := gitIn(t, repo)
 	git("init", "-q", "-b", "main")
 	writeFile(t, repo+"/limit.go", "package api\n\nfunc Limit() {\n\tkey := clientKey(r)\n\tKEY := 1\n}\n")
 	writeFile(t, repo+"/notes.md", "café key\nkeyboard\n")

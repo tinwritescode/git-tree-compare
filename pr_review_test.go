@@ -68,14 +68,7 @@ func TestViewedMutation(t *testing.T) {
 // A pull request is reviewed from its own refs: the checkout stays as it was, uncommitted work included.
 func TestPrepareReviewLeavesTheCheckoutAlone(t *testing.T) {
 	remote := t.TempDir()
-	r := func(args ...string) string {
-		t.Helper()
-		out, err := runGit(remote, append([]string{"-c", "user.name=t", "-c", "user.email=t@t"}, args...)...)
-		if err != nil {
-			t.Fatalf("git %v: %v", args, err)
-		}
-		return strings.TrimSpace(out)
-	}
+	r := gitIn(t, remote)
 	r("init", "-q", "-b", "main")
 	writeFile(t, remote+"/a.txt", "one\n")
 	r("add", ".")

@@ -828,6 +828,11 @@ body {
     flex-direction: column;
 }
 
+.quick .ref-sha {
+    color: var(--accent);
+    flex: none;
+}
+
 .quick li.none {
     opacity: 0.6;
     cursor: default;

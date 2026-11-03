@@ -28,6 +28,7 @@ import {paint, type Token} from './syntax';
 import {EditorMenu} from './editor-menu';
 import {Command, CommandPalette, CommandPanel, CommentBody, CommentsPanel, FileMenu, PRDiscussion, PRThread, QuickOpen, UpdateBanner} from './panels';
 import {PR, PRList, ReviewRuler} from './prs';
+import {RefPicker, type RefMode} from './ref-picker';
 import {
     applyServerStates, emptyRecord, isChangedSinceReview, isReviewed, nextBatch, nextUnreviewed, ReviewRecord, settleBatch, toggleReviewed,
 } from './review';
@@ -68,8 +69,12 @@ function writeStore(key: string, value: unknown) {
 }
 
 const reviewKey = (repo: string, number: number) => `git-tree-compare:review:${repo}#${number}`;
+const localReviewKey = (repo: string, r: main.LocalReview) => `git-tree-compare:review:${repo}@${r.base}..${r.head}`;
 
-type OpenRequest = {repo?: string; error?: string};
+type OpenRequest = {repo?: string; error?: string; review?: main.LocalReview};
+
+// What is under review: an open pull request, or a commit or branch read from git alone.
+type Subject = {kind: 'pr'; number: number} | {kind: 'local'; review: main.LocalReview};
 
 function App() {
     const [repo, setRepo] = useState(() => readStore('git-tree-compare:last', {repo: ''}).repo);
@@ -78,7 +83,9 @@ function App() {
     const [prsLoading, setPrsLoading] = useState(false);
     const [prsError, setPrsError] = useState('');
     const [prsRead, setPrsRead] = useState(false); // the list has been read from GitHub for this repository
-    const [openNumber, setOpenNumber] = useState<number | null>(null); // the pull request under review
+    const [subject, setSubject] = useState<Subject | null>(null);
+    const [launch, setLaunch] = useState<{review: main.LocalReview} | null>(null); // a review the command line asked for
+    const [refMode, setRefMode] = useState<RefMode | null>(null); // the commit or branch picker, while open
     const [target, setTarget] = useState<main.ReviewTarget | null>(null);
     const [pollTick, setPollTick] = useState(0);
     const [record, setRecord] = useState<ReviewRecord>(emptyRecord);
@@ -135,10 +142,15 @@ function App() {
     const diffCache = useRef<{scope: typeof scope; texts: Map<string, string>}>({scope: null, texts: new Map()});
     const seenHead = useRef<{number: number; head: string} | null>(null);
 
+    const openNumber = subject?.kind === 'pr' ? subject.number : null;
     const pr = useMemo(() => prs.find(p => p.number === openNumber) ?? null, [prs, openNumber]);
+    const local = subject?.kind === 'local' ? subject.review : null;
+    const reviewing = pr !== null || local !== null;
+    // The two commits being compared: a local review carries them, a pull request is fetched first.
+    const commits = local ?? target;
     const scope = useMemo(
-        () => (target ? {repo, base: target.base, head: target.head, ignoreWS} : null),
-        [repo, target, ignoreWS],
+        () => (commits ? {repo, base: commits.base, head: commits.head, ignoreWS} : null),
+        [repo, commits?.base, commits?.head, ignoreWS],
     );
 
     const visibleChanges = useMemo(() => {
@@ -220,9 +232,11 @@ function App() {
     // Marks one file or a selection, on screen now and on GitHub right after.
     function toggleFiles(paths: string[]) {
         if (!paths.length) return;
-        const {record: next, viewed} = toggleReviewed(recordRef.current, paths);
+        const {record: toggled, viewed} = toggleReviewed(recordRef.current, paths);
+        // A commit or branch has no pull request to tell, so its mark is settled as soon as it is made.
+        const next = pr ? toggled : settleBatch(toggled, {paths, viewed});
         commitRecord(next);
-        flushReview();
+        if (pr) flushReview();
         if (viewed && paths.length === 1 && paths[0] === selected?.path) {
             const following = nextUnreviewed(files, next, paths[0]);
             if (following) setSelected(following);
@@ -262,6 +276,7 @@ function App() {
                 setRepo(req.repo);
                 setLanding(false);
             }
+            if (req.review) setLaunch({review: req.review});
         }
         TakePendingRepo().then(apply).catch(() => {});
         const off = EventsOn('repo:open', (req: OpenRequest) => apply(req));
@@ -311,7 +326,7 @@ function App() {
     }
 
     function closeReview() {
-        setOpenNumber(null);
+        setSubject(null);
         setTarget(null);
         setSearchQuery(emptyQuery);
         setSearchOpen(false);
@@ -332,13 +347,24 @@ function App() {
         setNotes(readStore<Record<string, string>>(`git-tree-compare:notes:${repo}`, {}));
         CurrentPRNumber(repo)
             .then(number => {
-                if (!cancelled && number) setOpenNumber(number);
+                if (!cancelled && number) setSubject(s => s ?? {kind: 'pr', number});
             })
             .catch(() => {});
         return () => {
             cancelled = true;
         };
     }, [repo]);
+
+    // Opens a commit or branch. It runs after the per-repo reset above, so a request that also
+    // switched the repository is not wiped by it.
+    useEffect(() => {
+        if (launch) openLocal(launch.review);
+    }, [launch]);
+
+    function openLocal(review: main.LocalReview) {
+        closeReview();
+        setSubject({kind: 'local', review});
+    }
 
     // The open pull requests, refreshed every minute while the window is in front.
     useEffect(() => {
@@ -384,13 +410,15 @@ function App() {
 
     // The review record of the open pull request: last known states and marks still to send.
     useEffect(() => {
-        const next = pr ? {repo, id: pr.id, key: reviewKey(repo, pr.number)} : null;
+        const next = pr ? {repo, id: pr.id, key: reviewKey(repo, pr.number)}
+            : local ? {repo, id: '', key: localReviewKey(repo, local)}
+            : null;
         owner.current = next;
         const saved = next ? readStore<ReviewRecord>(next.key, emptyRecord) : emptyRecord;
         recordRef.current = saved;
         setRecord(saved);
         setSyncError('');
-    }, [repo, pr?.id]);
+    }, [repo, pr?.id, local?.base, local?.head]);
 
     // What GitHub says is viewed, on open and on every poll. Marks made here still wait their turn,
     // and a failed send is retried here. A read that started before a write is stale, so it is dropped.
@@ -542,7 +570,7 @@ function App() {
     // Keyboard: open dialogs, then move between files, filter, review, notes and the rest.
     useEffect(() => {
         function onKey(e: KeyboardEvent) {
-            if (picking || landing) return;
+            if (picking || landing || refMode) return;
             if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
                 e.preventDefault();
                 setPaletteOpen(open => !open);
@@ -550,12 +578,12 @@ function App() {
             }
             if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'f') {
                 e.preventDefault();
-                if (pr) setSearchOpen(open => !open);
+                if (reviewing) setSearchOpen(open => !open);
                 return;
             }
             if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'p') {
                 e.preventDefault();
-                if (pr) setQuickOpen(open => !open);
+                if (reviewing) setQuickOpen(open => !open);
                 return;
             }
             if (e.metaKey || e.ctrlKey || e.altKey) return;
@@ -583,7 +611,7 @@ function App() {
                 setHelpOpen(false);
                 return;
             }
-            if (!pr) return;
+            if (!reviewing) return;
 
             switch (e.key) {
                 case '/':
@@ -758,9 +786,9 @@ function App() {
     }
 
     async function exportPatch() {
-        if (!scope || !pr) return;
+        if (!scope) return;
         try {
-            const path = await ExportPatch(scope, pr.number);
+            const path = await ExportPatch(scope, pr ? `pr-${pr.number}` : scope.head.slice(0, 7));
             if (path) showFlash(`Saved ${path}`);
         } catch (e) {
             setError(`Could not save the patch: ${e}`);
@@ -778,8 +806,9 @@ function App() {
     }
 
     async function copySummary() {
-        if (!pr) return;
-        const md = buildMarkdown({title: `#${pr.number} ${pr.title}`, files: changes, reviewed, notes});
+        const title = pr ? `#${pr.number} ${pr.title}` : local?.title;
+        if (!title) return;
+        const md = buildMarkdown({title, files: changes, reviewed, notes});
         try {
             await navigator.clipboard.writeText(md);
             showFlash('Summary copied as Markdown');
@@ -789,12 +818,16 @@ function App() {
     }
 
     const commands: Command[] = [
-        ...(pr ? [
+        ...(reviewing ? [
             {id: 'back', label: 'Back to pull requests', hint: 'p', run: closeReview},
             {id: 'file', label: 'Go to file', hint: '⌘P', run: () => setQuickOpen(true)},
             {id: 'search', label: 'Search in files', hint: '⇧⌘F', run: () => setSearchOpen(true)},
+        ] : []),
+        ...(pr ? [
             {id: 'comments', label: 'Show comments', hint: 'c', run: toggleComments},
             {id: 'github', label: 'Open pull request on GitHub', run: () => BrowserOpenURL(pr.url)},
+        ] : []),
+        ...(reviewing ? [
             {id: 'ws', label: ignoreWS ? 'Show whitespace changes' : 'Ignore whitespace changes', hint: 'b', run: () => setIgnoreWS(v => !v)},
             {id: 'sort', label: sort === 'name' ? 'Sort files by size of change' : 'Sort files by name', run: () => setSort(s => (s === 'name' ? 'size' : 'name'))},
             {id: 'run', label: 'Run a command', hint: 't', run: () => setCmdOpen(v => !v)},
@@ -804,6 +837,8 @@ function App() {
         {id: 'refresh', label: 'Refresh', hint: 'r', run: () => setPollTick(t => t + 1)},
         {id: 'terminal', label: termOpen ? 'Hide terminal' : 'Show terminal', hint: '⌃`', run: () => setTermOpen(v => !v)},
         {id: 'repo', label: 'Open another repository', run: chooseRepo},
+        {id: 'commit', label: 'Review a commit…', run: () => setRefMode('commit')},
+        {id: 'branch', label: 'Review a branch…', run: () => setRefMode('branch')},
         {id: 'keys', label: 'Keyboard shortcuts', hint: '?', run: () => setHelpOpen(true)},
         {id: 'cli', label: "Install 'git-tree-compare' command in PATH", run: installCLI},
     ];
@@ -860,10 +895,20 @@ function App() {
                 />
             )}
 
-            {searchOpen && target && (
+            {refMode && (
+                <RefPicker
+                    repo={repo}
+                    mode={refMode}
+                    onOpen={openLocal}
+                    onError={setError}
+                    onClose={() => setRefMode(null)}
+                />
+            )}
+
+            {searchOpen && commits && (
                 <SearchDialog
                     repo={repo}
-                    head={target.head}
+                    head={commits.head}
                     paths={searchPaths}
                     query={searchQuery}
                     onQuery={setSearchQuery}
@@ -884,7 +929,7 @@ function App() {
                 />
             )}
 
-            {!landing && !pr && (
+            {!landing && !reviewing && (
                 <PRList
                     repo={repo}
                     prs={prs}
@@ -892,23 +937,34 @@ function App() {
                     error={prsError}
                     reviewedCount={p => storedReviewedCount(repo, p)}
                     active={!picking && !paletteOpen && !helpOpen && openNumber === null}
-                    onOpen={p => setOpenNumber(p.number)}
+                    onOpen={p => setSubject({kind: 'pr', number: p.number})}
                     onRefresh={() => setPollTick(t => t + 1)}
                     onChangeRepo={chooseRepo}
+                    onCommands={() => setPaletteOpen(true)}
                 />
             )}
 
-            {pr && (
+            {reviewing && (
                 <>
                     <header className="review-bar">
                         <Button onClick={closeReview} title="All pull requests (p)">All PRs</Button>
                         <div className="review-title">
-                            <span className="review-name"><span className="pr-num">{pr.number}</span> {pr.title}</span>
-                            <span className="review-sub">
-                                {pr.author} wants {pr.headRefName} in {pr.baseRefName}
-                                {pr.mergeable === 'CONFLICTING' && <span className="pr-tag bad">Conflicts</span>}
-                                {pr.isDraft && <span className="pr-tag">Draft</span>}
-                            </span>
+                            {pr && (
+                                <>
+                                    <span className="review-name"><span className="pr-num">{pr.number}</span> {pr.title}</span>
+                                    <span className="review-sub">
+                                        {pr.author} wants {pr.headRefName} in {pr.baseRefName}
+                                        {pr.mergeable === 'CONFLICTING' && <span className="pr-tag bad">Conflicts</span>}
+                                        {pr.isDraft && <span className="pr-tag">Draft</span>}
+                                    </span>
+                                </>
+                            )}
+                            {local && (
+                                <>
+                                    <span className="review-name">{local.title}</span>
+                                    <span className="review-sub">{local.detail}</span>
+                                </>
+                            )}
                         </div>
                         {unsynced.size > 0 && (
                             <span className="sync-note" role="status" title={syncError}>
@@ -916,9 +972,11 @@ function App() {
                             </span>
                         )}
                         <span className="review-count" title="Files reviewed"><strong>{reviewedCount}</strong>/{changes.length}</span>
-                        <Button onClick={toggleComments} aria-pressed={commentsOpen} title="Review comments (c)">
-                            Comments{unresolvedCount > 0 ? ` ${unresolvedCount}` : ''}
-                        </Button>
+                        {pr && (
+                            <Button onClick={toggleComments} aria-pressed={commentsOpen} title="Review comments (c)">
+                                Comments{unresolvedCount > 0 ? ` ${unresolvedCount}` : ''}
+                            </Button>
+                        )}
                         <Button onClick={() => setPaletteOpen(true)} title="All commands">Commands <Kbd>⌘K</Kbd></Button>
                     </header>
 
@@ -959,10 +1017,10 @@ function App() {
                                 </div>
                             )}
                             {loading && changes.length === 0 && (
-                                <Empty title="Fetching pull request…" mascot={<Snail/>}/>
+                                <Empty title={pr ? 'Fetching pull request…' : 'Reading changes…'} mascot={<Snail/>}/>
                             )}
-                            {!loading && target && changes.length === 0 && (
-                                <Empty title="No changed files" hint="This pull request changes nothing." mascot={<OwlTray/>}/>
+                            {!loading && commits && changes.length === 0 && (
+                                <Empty title="No changed files" hint={pr ? 'This pull request changes nothing.' : 'Nothing changed here.'} mascot={<OwlTray/>}/>
                             )}
                             {changes.length > 0 && visibleChanges.length === 0 && (
                                 <Empty title="No matches" hint={`Nothing matches "${filter}".`} mascot={<OwlSearch/>}/>
@@ -989,8 +1047,14 @@ function App() {
                             {changes.length > 0 && reviewedCount === changes.length && (
                                 <div className="passed" role="status">
                                     <OwlHop/>
-                                    <span>All {changes.length} files reviewed. Approve or request changes on GitHub.</span>
-                                    <Button onClick={() => BrowserOpenURL(pr.url)}>Open on GitHub</Button>
+                                    {pr ? (
+                                        <>
+                                            <span>All {changes.length} files reviewed. Approve or request changes on GitHub.</span>
+                                            <Button onClick={() => BrowserOpenURL(pr.url)}>Open on GitHub</Button>
+                                        </>
+                                    ) : (
+                                        <span>All {changes.length} files reviewed.</span>
+                                    )}
                                 </div>
                             )}
                             {commentsOpen && (

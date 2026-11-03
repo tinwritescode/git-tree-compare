@@ -50,6 +50,10 @@ export function ListPRs(arg1) {
   return window['go']['main']['App']['ListPRs'](arg1);
 }
 
+export function ListRefs(arg1) {
+  return window['go']['main']['App']['ListRefs'](arg1);
+}
+
 export function OpenInEditor(arg1, arg2, arg3) {
   return window['go']['main']['App']['OpenInEditor'](arg1, arg2, arg3);
 }
@@ -72,6 +76,14 @@ export function ResizeTerminal(arg1, arg2) {
 
 export function ResolveRepo(arg1) {
   return window['go']['main']['App']['ResolveRepo'](arg1);
+}
+
+export function ReviewBranch(arg1, arg2, arg3) {
+  return window['go']['main']['App']['ReviewBranch'](arg1, arg2, arg3);
+}
+
+export function ReviewCommit(arg1, arg2) {
+  return window['go']['main']['App']['ReviewCommit'](arg1, arg2);
 }
 
 export function RunCommand(arg1, arg2) {

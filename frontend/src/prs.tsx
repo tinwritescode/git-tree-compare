@@ -2,6 +2,7 @@ import {useEffect, useMemo, useRef, useState} from 'react';
 import type {main} from '../wailsjs/go/models';
 import {basename, inkShare, tickWeight, timeAgo} from './util';
 import {Button} from './ui/button';
+import {Kbd} from './ui/kbd';
 import {OwlTray, Snail} from './mascots';
 
 export type PR = main.PRInfo;
@@ -13,7 +14,7 @@ const GROUPS: {id: string; title: string}[] = [
 ];
 
 // PRList is the home of a repository: every open pull request, the ones asking for this reviewer first.
-export function PRList({repo, prs, loading, error, reviewedCount, active, onOpen, onRefresh, onChangeRepo}: {
+export function PRList({repo, prs, loading, error, reviewedCount, active, onOpen, onRefresh, onChangeRepo, onCommands}: {
     repo: string;
     prs: PR[];
     loading: boolean;
@@ -23,6 +24,7 @@ export function PRList({repo, prs, loading, error, reviewedCount, active, onOpen
     onOpen: (pr: PR) => void;
     onRefresh: () => void;
     onChangeRepo: () => void;
+    onCommands: () => void; // opens the palette, which also reviews a commit or branch
 }) {
     const [query, setQuery] = useState('');
     const [index, setIndex] = useState(0);
@@ -79,6 +81,7 @@ export function PRList({repo, prs, loading, error, reviewedCount, active, onOpen
                     }}
                 />
                 <Button onClick={onRefresh} disabled={loading} title="Refresh (r)">{loading ? 'Loading…' : 'Refresh'}</Button>
+                <Button onClick={onCommands} title="All commands, including reviewing a commit or branch">Commands <Kbd>⌘K</Kbd></Button>
             </header>
 
             {error && (

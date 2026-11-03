@@ -8,11 +8,12 @@ import {Kbd} from './ui/kbd';
 export type PickerItem = {id: string; label: string; leading?: ReactNode; hint?: string};
 
 // Picker is a searchable list in a dialog: type to narrow it, arrows to move, Enter to choose.
-function Picker({placeholder, empty, items, order, onPick, onClose}: {
+export function Picker({placeholder, empty, items, order, typed, onPick, onClose}: {
     placeholder: string;
     empty: string;
     items: PickerItem[];
     order?: (a: PickerItem, b: PickerItem) => number; // breaks ties between equal matches
+    typed?: (query: string) => PickerItem; // a last entry that takes the typed text as it is
     onPick: (id: string) => void;
     onClose: () => void;
 }) {
@@ -20,13 +21,15 @@ function Picker({placeholder, empty, items, order, onPick, onClose}: {
     const [index, setIndex] = useState(0);
 
     const matches = useMemo(() => {
-        return items
+        const found = items
             .map(item => ({item, score: fuzzyScore(query, item.label)}))
             .filter(m => m.score >= 0)
             .sort((a, b) => a.score - b.score || (order?.(a.item, b.item) ?? 0))
             .map(m => m.item)
             .slice(0, 50);
-    }, [items, order, query]);
+        const q = query.trim();
+        return typed && q ? [...found, typed(q)] : found;
+    }, [items, order, typed, query]);
 
     function onKey(e: KeyboardEvent) {
         if (e.key === 'Escape') onClose();

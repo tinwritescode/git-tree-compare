@@ -18,9 +18,11 @@ const (
 )
 
 // OpenRequest asks the frontend to show a repository, or reports why it could not.
+// Review is set when the command line asked for a commit or a branch.
 type OpenRequest struct {
-	Repo  string `json:"repo"`
-	Error string `json:"error"`
+	Repo   string       `json:"repo"`
+	Error  string       `json:"error"`
+	Review *LocalReview `json:"review,omitempty"`
 }
 
 // App struct
@@ -43,11 +45,15 @@ func (a *App) startup(ctx context.Context) {
 	go refreshInstalledCLI()
 }
 
-// requestRepo resolves path to its repository root and tells the frontend to show it.
-// It also stores the request, so a frontend that is not listening yet can take it later.
-func (a *App) requestRepo(path string) {
+// requestOpen resolves the launch path to its repository root, and any commit or branch in it,
+// and tells the frontend to show them. It also stores the request, so a frontend that is not
+// listening yet can take it later.
+func (a *App) requestOpen(l Launch) {
 	req := OpenRequest{}
-	root, err := ResolveRepo(path)
+	root, err := ResolveRepo(l.Path)
+	if err == nil {
+		req.Review, err = launchReview(root, l)
+	}
 	if err != nil {
 		req.Error = err.Error()
 	} else {
@@ -71,8 +77,8 @@ func (a *App) requestRepo(path string) {
 // onSecondInstance handles `git-tree-compare <path>` run while the app is already open.
 // The new process hands its arguments here and exits.
 func (a *App) onSecondInstance(data options.SecondInstanceData) {
-	if path := parseLaunchArgs(data.Args); path != "" {
-		a.requestRepo(path)
+	if l := parseLaunchArgs(data.Args); l.Path != "" {
+		a.requestOpen(l)
 	}
 	runtime.WindowUnminimise(a.ctx)
 	runtime.WindowShow(a.ctx)
@@ -119,6 +125,21 @@ func (a *App) PrepareReview(repo string, pr PRInfo) (ReviewTarget, error) {
 	return PrepareReview(repo, pr)
 }
 
+// ReviewCommit returns the diff of one commit, to review without a pull request.
+func (a *App) ReviewCommit(repo, rev string) (LocalReview, error) {
+	return ReviewCommit(repo, rev)
+}
+
+// ReviewBranch returns what a branch adds over base ("" for the default branch).
+func (a *App) ReviewBranch(repo, branch, base string) (LocalReview, error) {
+	return ReviewBranch(repo, branch, base)
+}
+
+// ListRefs lists the branches and recent commits the review pickers offer.
+func (a *App) ListRefs(repo string) (RefList, error) {
+	return ListRefs(repo)
+}
+
 // PRViewedStates returns the viewer's state of every file in the pull request.
 func (a *App) PRViewedStates(repo, prID string) (map[string]string, error) {
 	return PRViewedStates(repo, prID)
@@ -134,15 +155,15 @@ func (a *App) PRComments(repo, prID string) (PRDiscussion, error) {
 	return PRComments(repo, prID)
 }
 
-// ExportPatch writes the pull request's diff to a .patch file the user chooses.
-// It returns the saved path, or "" when the dialog was cancelled.
-func (a *App) ExportPatch(s Scope, number int) (string, error) {
+// ExportPatch writes the review's diff to a .patch file the user chooses. name, such as "pr-12",
+// goes into the suggested file name. It returns the saved path, or "" when the dialog was cancelled.
+func (a *App) ExportPatch(s Scope, name string) (string, error) {
 	out, err := scopeDiff(s, nil, "")
 	if err != nil {
 		return "", err
 	}
 	path, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
-		DefaultFilename: fmt.Sprintf("%s-pr-%d.patch", filepath.Base(s.Repo), number),
+		DefaultFilename: fmt.Sprintf("%s-%s.patch", filepath.Base(s.Repo), name),
 		Filters:         []runtime.FileFilter{{DisplayName: "Patch", Pattern: "*.patch"}},
 	})
 	if err != nil || path == "" {

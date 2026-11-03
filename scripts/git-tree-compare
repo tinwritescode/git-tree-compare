@@ -1,12 +1,40 @@
 #!/bin/sh
 # Open a git repository in git-tree-compare and return the prompt at once.
-# Usage: git-tree-compare [path]
+# Usage: git-tree-compare [path] [--commit REV | --branch NAME [--base NAME]]
 #   path      repository or any folder inside it (default: current directory)
+#   --commit  review what one commit changed
+#   --branch  review what a branch adds over --base (default: main or master)
 # Set GTC_APP to use an app bundle somewhere other than /Applications.
 
 APP="${GTC_APP:-/Applications/git-tree-compare.app}"
 
-dir="${1:-.}"
+dir="."
+# Each pass takes one argument off the front. Flags for the app go back on the end, so "$@"
+# holds only them when the loop is done.
+n=$#
+while [ "$n" -gt 0 ]; do
+    arg="$1"
+    shift
+    n=$((n - 1))
+    case "$arg" in
+        --commit|--branch|--base)
+            [ "$n" -gt 0 ] || { echo "git-tree-compare: $arg needs a value" >&2; exit 1; }
+            set -- "$@" "$arg=$1"
+            shift
+            n=$((n - 1))
+            ;;
+        --commit=*|--branch=*|--base=*)
+            set -- "$@" "$arg"
+            ;;
+        -*)
+            echo "git-tree-compare: unknown option: $arg" >&2
+            exit 1
+            ;;
+        *)
+            dir="$arg"
+            ;;
+    esac
+done
 
 path=$(cd "$dir" 2>/dev/null && pwd -P) || {
     echo "git-tree-compare: not a directory: $dir" >&2
@@ -15,4 +43,4 @@ path=$(cd "$dir" 2>/dev/null && pwd -P) || {
 
 # -n starts a new process even when the app is open. That process hands the
 # path to the running window through the single-instance lock and exits.
-exec open -n -a "$APP" --args "$path"
+exec open -n -a "$APP" --args "$path" "$@"

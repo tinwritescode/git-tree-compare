@@ -12,7 +12,7 @@ export function Diff(arg1:main.Scope,arg2:string):Promise<string>;
 
 export function DiffAnchor(arg1:string):Promise<string>;
 
-export function ExportPatch(arg1:main.Scope,arg2:number):Promise<string>;
+export function ExportPatch(arg1:main.Scope,arg2:string):Promise<string>;
 
 export function HomeDir():Promise<string>;
 
@@ -26,6 +26,8 @@ export function ListDir(arg1:string):Promise<main.DirListing>;
 
 export function ListPRs(arg1:string):Promise<Array<main.PRInfo>>;
 
+export function ListRefs(arg1:string):Promise<main.RefList>;
+
 export function OpenInEditor(arg1:string,arg2:string,arg3:string):Promise<void>;
 
 export function PRComments(arg1:string,arg2:string):Promise<main.PRDiscussion>;
@@ -37,6 +39,10 @@ export function PrepareReview(arg1:string,arg2:main.PRInfo):Promise<main.ReviewT
 export function ResizeTerminal(arg1:number,arg2:number):Promise<void>;
 
 export function ResolveRepo(arg1:string):Promise<string>;
+
+export function ReviewBranch(arg1:string,arg2:string,arg3:string):Promise<main.LocalReview>;
+
+export function ReviewCommit(arg1:string,arg2:string):Promise<main.LocalReview>;
 
 export function RunCommand(arg1:string,arg2:string):Promise<main.RunResult>;
 

@@ -1,6 +1,7 @@
 package main
 
 // Scope says what is being reviewed: the diff from Base to Head, both full commit ids.
+// Base is the empty tree when Head is a root commit.
 type Scope struct {
 	Repo     string `json:"repo"`
 	Base     string `json:"base"`

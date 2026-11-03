@@ -11,6 +11,7 @@ Created by **Tin Nguyen**.
 
 - Every open pull request in a repository, with the ones waiting for your review first
 - Open a pull request without checking it out: your branch and uncommitted work stay as they are
+- Review a single commit, or a branch against its base, without a pull request
 - Changed files as a folder tree, with status, line counts, and filtering
 - Split or unified diff, optional whitespace ignore, and hunk navigation
 - Press `x` to mark a file reviewed, here and on GitHub, then move to the next unreviewed file
@@ -53,6 +54,22 @@ To install the `git-tree-compare` command, press `⌘K` in the app and choose **
 ### Pick a pull request
 
 The app lists every open pull request and refreshes the list every minute. If your checked-out branch has an open pull request, it opens directly. Press `p` to go back to the list.
+
+### Review a commit or a branch
+
+Press `⌘K` and choose **Review a commit…** or **Review a branch…**. Pick from the list, or type any ref git understands, such as `HEAD~2`. For a branch, then pick the base it goes into; the default branch is listed first.
+
+From a terminal:
+
+```bash
+git-tree-compare . --commit a1b2c3d
+git-tree-compare . --branch feat/x
+git-tree-compare . --branch feat/x --base staging
+```
+
+- A commit shows what it changed against its first parent.
+- A branch shows what it adds since it left the base, as a pull request would. The base defaults to `main` or `master`, read from `origin` when it has that branch.
+- Marks stay on this machine. Comments and GitHub sync apply to pull requests only.
 
 ### Review files
 
