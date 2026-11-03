@@ -8,6 +8,7 @@ import {
     Diff,
     DiffAnchor,
     ExportPatch,
+    InstallCLI,
     InstallUpdate,
     InstalledEditors,
     ListPRs,
@@ -766,6 +767,16 @@ function App() {
         }
     }
 
+    // Puts the git-tree-compare command on the PATH, so a terminal can open a repository here.
+    async function installCLI() {
+        try {
+            const path = await InstallCLI();
+            showFlash(`Installed ${path}`);
+        } catch (e) {
+            setError(String(e));
+        }
+    }
+
     async function copySummary() {
         if (!pr) return;
         const md = buildMarkdown({title: `#${pr.number} ${pr.title}`, files: changes, reviewed, notes});
@@ -794,6 +805,7 @@ function App() {
         {id: 'terminal', label: termOpen ? 'Hide terminal' : 'Show terminal', hint: '⌃`', run: () => setTermOpen(v => !v)},
         {id: 'repo', label: 'Open another repository', run: chooseRepo},
         {id: 'keys', label: 'Keyboard shortcuts', hint: '?', run: () => setHelpOpen(true)},
+        {id: 'cli', label: "Install 'git-tree-compare' command in PATH", run: installCLI},
     ];
 
     return (

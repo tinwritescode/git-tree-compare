@@ -48,6 +48,8 @@ git-tree-compare /path/to/repo
 
 A second launch with a path hands the repository to the running window.
 
+To install the `git-tree-compare` command, press `⌘K` in the app and choose **Install 'git-tree-compare' command in PATH**. The app writes it to the first of `~/.local/bin`, `/usr/local/bin` or `/opt/homebrew/bin` that your shell's `PATH` lists, and keeps it up to date after each app update.
+
 ### Pick a pull request
 
 The app lists every open pull request and refreshes the list every minute. If your checked-out branch has an open pull request, it opens directly. Press `p` to go back to the list.

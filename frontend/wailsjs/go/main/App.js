@@ -30,6 +30,10 @@ export function HomeDir() {
   return window['go']['main']['App']['HomeDir']();
 }
 
+export function InstallCLI() {
+  return window['go']['main']['App']['InstallCLI']();
+}
+
 export function InstallUpdate() {
   return window['go']['main']['App']['InstallUpdate']();
 }

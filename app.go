@@ -40,6 +40,7 @@ func NewApp() *App {
 // so we can call the runtime methods
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+	go refreshInstalledCLI()
 }
 
 // requestRepo resolves path to its repository root and tells the frontend to show it.

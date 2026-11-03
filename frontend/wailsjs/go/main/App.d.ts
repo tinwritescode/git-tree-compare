@@ -16,6 +16,8 @@ export function ExportPatch(arg1:main.Scope,arg2:number):Promise<string>;
 
 export function HomeDir():Promise<string>;
 
+export function InstallCLI():Promise<string>;
+
 export function InstallUpdate():Promise<void>;
 
 export function InstalledEditors():Promise<Array<main.Editor>>;
