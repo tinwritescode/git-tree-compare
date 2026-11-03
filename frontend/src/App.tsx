@@ -1195,7 +1195,7 @@ function TreeItem(props: TreeProps & {node: TreeNode; depth: number}) {
     return (
         <li>
             <div className="row folder" style={indent} onClick={() => rest.onToggle(node.path)}>
-                <span className="caret">{open ? '▾' : '▸'}</span>
+                <span className={open ? 'caret open' : 'caret'}>▸</span>
                 <span className="name">{node.name}</span>
                 <span className="counts"><span className="added">+{node.added}</span> <span className="deleted">−{node.deleted}</span></span>
             </div>

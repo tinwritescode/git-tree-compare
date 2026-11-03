@@ -69,6 +69,16 @@
     --radius-lg: 14px;
     --tick-height: 18px;
 
+    /* Motion: one ease, three speeds. Fills and presses are fast, panels rise at base, the
+     * review box lands slow. Reduced motion sets all three to zero. */
+    --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+    --ease-pop: cubic-bezier(0.3, 1.6, 0.5, 1);
+    --t-fast: 120ms;
+    --t-base: 180ms;
+    --t-slow: 240ms;
+    --btn-border-hover: #8F88CC;
+    --accent-hover: #B8222B;
+
     /* Syntax colours stay off yellow, green and red, which already mean reviewed, added and removed. */
     --shiki-foreground: var(--text);
     --shiki-token-keyword: #7B3FC4;
@@ -129,7 +139,9 @@
         --text-dim: #B3AEDD;
         --btn-bg: #24206A;
         --btn-border: #5650B0;
+        --btn-border-hover: #8A84E0;
         --accent: #FF6B73;
+        --accent-hover: #FF8A90;
         --accent-text: #FF8A90;
         --accent-soft: #432058;
         --on-accent: #1B1850;
@@ -191,6 +203,124 @@ body {
 :focus-visible {
     outline: 2px solid var(--focus);
     outline-offset: 1px;
+}
+
+/*
+ * Interaction. Whatever can be clicked shows the hand and a lavender fill on hover, fading in
+ * over --t-fast; buttons sink a little while pressed. Selected and open items keep their own
+ * marks, so hover never hides which one is current.
+ */
+button:not(:disabled),
+[role="menuitem"],
+[role="option"],
+summary,
+label:has(> input[type="checkbox"]),
+input[type="checkbox"] {
+    cursor: pointer;
+}
+
+button:disabled {
+    cursor: not-allowed;
+}
+
+.button,
+.row,
+.pr-row,
+.quick li,
+.picker-item,
+.picker-recent,
+.landing-action,
+.prs-repo,
+.cmt-path,
+.search-toggle,
+.ctx-menu button,
+[role="menu"] button {
+    transition:
+        background-color var(--t-fast) var(--ease),
+        border-color var(--t-fast) var(--ease),
+        color var(--t-fast) var(--ease),
+        text-decoration-color var(--t-fast) var(--ease),
+        box-shadow var(--t-fast) var(--ease),
+        transform var(--t-fast) var(--ease);
+}
+
+.button:active:not(:disabled),
+.ctx-menu button:active,
+[role="menu"] button:active {
+    transform: scale(0.97);
+}
+
+/* HeroUI's outline hover is a faint tint under our panel fill, so the outline button sets its own. */
+.button--outline:hover:not(:disabled) {
+    background: var(--bg-hover);
+    border-color: var(--btn-border-hover);
+}
+
+.button--primary:hover:not(:disabled) {
+    box-shadow: 0 2px 0 color-mix(in srgb, var(--accent-hover) 70%, black);
+}
+
+/* The link button reads as text until hovered, then as a pill with its underline drawn in. */
+.button.underline:hover:not(:disabled) {
+    background: var(--cool-soft);
+    text-decoration-color: currentColor;
+}
+
+.cmt-path:not(.static):hover {
+    background: var(--cool-soft);
+    border-radius: 4px;
+}
+
+/* Panels and menus arrive instead of appearing. */
+.overlay {
+    animation: fade-in var(--t-base) var(--ease) both;
+}
+
+.quick,
+.picker,
+.shortcuts {
+    animation: rise-in var(--t-base) var(--ease) both;
+}
+
+.ctx-menu,
+[role="menu"] {
+    transform-origin: top left;
+    animation: menu-in var(--t-fast) var(--ease) both;
+}
+
+.flash,
+.passed {
+    animation: drop-in var(--t-slow) var(--ease) both;
+}
+
+@keyframes fade-in {
+    from { opacity: 0; }
+}
+
+@keyframes rise-in {
+    from { opacity: 0; transform: translateY(8px) scale(0.98); }
+}
+
+@keyframes menu-in {
+    from { opacity: 0; transform: scale(0.96); }
+}
+
+@keyframes drop-in {
+    from { opacity: 0; transform: translateY(-6px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    :root {
+        --t-fast: 0ms;
+        --t-base: 0ms;
+        --t-slow: 0ms;
+    }
+
+    .button:active:not(:disabled),
+    .ctx-menu button:active,
+    [role="menu"] button:active {
+        transform: none;
+    }
 }
 
 .toolbar {
@@ -322,7 +452,8 @@ body {
     color: var(--text-dim);
 }
 
-/* The checkbox is empty until the file is reviewed, then filled with amber: the reviewer's colour. */
+/* The checkbox is empty until the file is reviewed, then filled with amber: the reviewer's colour.
+ * The tick grows in past its size and settles, a transition, so rows drawn already ticked stay still. */
 .row .review {
     appearance: none;
     flex: none;
@@ -331,20 +462,34 @@ body {
     margin: 0 1px;
     border: 1px solid var(--btn-border);
     border-radius: 4px;
-    background: transparent;
+    background: var(--check-icon) center / 0 no-repeat transparent;
     cursor: pointer;
+    transition:
+        background-color var(--t-fast) var(--ease),
+        border-color var(--t-fast) var(--ease),
+        background-size var(--t-slow) var(--ease-pop);
+}
+
+.row .review:hover {
+    border-color: var(--cool);
+    background-color: var(--cool-soft);
 }
 
 .row .review:checked {
     border-color: var(--done);
-    background:
-        var(--check-icon) center / 12px no-repeat,
-        var(--done);
+    background-color: var(--done);
+    background-size: 12px;
 }
 
 .caret {
+    display: inline-block;
     width: 10px;
     opacity: 0.6;
+    transition: transform var(--t-base) var(--ease);
+}
+
+.caret.open {
+    transform: rotate(90deg);
 }
 
 .name {
@@ -685,8 +830,9 @@ body {
     cursor: pointer;
 }
 
+/* The pointer moves the active item, so its fill is the hover fill: white on the white panel hid it. */
 .picker-item.active {
-    background: var(--bg-active);
+    background: var(--bg-hover);
     box-shadow: inset 2px 0 0 var(--accent);
 }
 
@@ -816,7 +962,7 @@ body {
 }
 
 .quick li.active {
-    background: var(--bg-active);
+    background: var(--bg-hover);
     box-shadow: inset 2px 0 0 var(--accent);
 }
 
@@ -1557,11 +1703,15 @@ body {
     border-radius: 2px;
     background: var(--border);
     cursor: pointer;
-    transition: background-color 120ms ease-out;
+    transition:
+        background-color var(--t-fast) var(--ease),
+        transform var(--t-fast) var(--ease);
 }
 
+/* The tick under the pointer stands up, so it is clear which file a click opens. */
 .ruler-tick:hover {
-    background: var(--text-dim);
+    background: var(--cool);
+    transform: scaleY(1.3);
 }
 
 .ruler-tick.done {
@@ -1774,8 +1924,8 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .ruler-tick {
-        transition: none;
+    .ruler-tick:hover {
+        transform: none;
     }
 
     .jumped {
