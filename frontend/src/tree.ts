@@ -1,4 +1,5 @@
 import type {main} from '../wailsjs/go/models';
+import {isLockfile} from './triage';
 
 export type FileChange = main.FileChange;
 export type SortMode = 'name' | 'size';
@@ -16,7 +17,6 @@ export interface TreeNode {
 
 // Files a person rarely reviews by hand: lock files, snapshots, bundles, generated code.
 const GENERATED = [
-    /(^|\/)(package-lock\.json|yarn\.lock|pnpm-lock\.yaml|go\.sum|Cargo\.lock|composer\.lock)$/,
     /\.lock$/,
     /\.snap$/,
     /\.min\.(js|css)$/,
@@ -25,7 +25,7 @@ const GENERATED = [
 ];
 
 export function isGenerated(path: string): boolean {
-    return GENERATED.some(re => re.test(path));
+    return isLockfile(path) || GENERATED.some(re => re.test(path));
 }
 
 // buildTree turns flat changed-file paths into folders and files.
@@ -45,7 +45,7 @@ export function buildTree(changes: FileChange[], sort: SortMode = 'name'): TreeN
             }
             if (i === parts.length - 1) {
                 child.file = change;
-                child.generated = isGenerated(change.path);
+                child.generated = !!change.generated || isGenerated(change.path);
             }
             node = child;
         });

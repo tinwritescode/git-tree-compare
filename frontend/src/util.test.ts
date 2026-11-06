@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'vitest';
-import {dropOldest, inkShare, tickWeight} from './util';
+import {dropOldest, folderOf, inkShare, tickWeight} from './util';
 
 describe('inkShare', () => {
     it('is empty for no lines and full at the top of the scale', () => {
@@ -26,5 +26,12 @@ describe('dropOldest', () => {
         const map = new Map([['a', 1], ['b', 2], ['c', 3]]);
         dropOldest(map, 2);
         expect([...map.keys()]).toEqual(['b', 'c']);
+    });
+});
+
+describe('folderOf', () => {
+    it('keeps the folders with their slash, and nothing for a file at the root', () => {
+        expect(folderOf('api/v1/limit.go')).toBe('api/v1/');
+        expect(folderOf('go.mod')).toBe('');
     });
 });

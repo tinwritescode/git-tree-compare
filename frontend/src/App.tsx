@@ -12,12 +12,15 @@ import {
     InstallCLI,
     InstallUpdate,
     InstalledEditors,
+    ListLocal,
     ListPRs,
     OpenInEditor,
     PRComments,
     PRViewedStates,
     PrepareReview,
     ResolveRepo,
+    ReviewBranch,
+    ReviewCommit,
     SetViewed,
     TakePendingRepo,
 } from '../wailsjs/go/main/App';
@@ -28,14 +31,16 @@ import {emptyQuery, SearchDialog, type SearchHit, type SearchQuery} from './sear
 import {paint, type Token} from './syntax';
 import {EditorMenu} from './editor-menu';
 import {Command, CommandPalette, CommandPanel, CommentBody, CommentsPanel, FileMenu, PRDiscussion, PRThread, QuickOpen, UpdateBanner} from './panels';
+import {type InboxRow, type LocalWork} from './inbox';
 import {PR, PRList, ReviewRuler} from './prs';
 import {RefPicker, type RefMode} from './ref-picker';
 import {
     applyServerStates, emptyRecord, isChangedSinceReview, isReviewed, nextBatch, nextUnreviewed, ReviewRecord, settleBatch, toggleReviewed,
 } from './review';
 import {buildTree, FileChange, SortMode, TreeNode} from './tree';
+import {groupByState, NOISE_LABEL, noiseOf, type NoiseReason, parseTreeViews, SECTION_TITLE, type Section, type SectionKind, type TreeViews} from './triage';
 import type {main} from '../wailsjs/go/models';
-import {basename, buildMarkdown, dropOldest} from './util';
+import {basename, buildMarkdown, dropOldest, folderOf} from './util';
 import {Button} from './ui/button';
 import {Kbd} from './ui/kbd';
 import {RepoPicker} from './repo-picker';
@@ -51,6 +56,7 @@ const DIFF_CACHE_SIZE = 40; // files whose diff text is kept while a pull reques
 const UPDATE_DISMISSED_KEY = 'git-tree-compare:update-dismissed';
 const RECENT_KEY = 'git-tree-compare:recent';
 const RECENT_LIMIT = 8;
+const TREE_VIEW_KEY = 'git-tree-compare:treeView';
 
 function readStore<T>(key: string, fallback: T): T {
     try {
@@ -84,6 +90,7 @@ function App() {
     const [prsLoading, setPrsLoading] = useState(false);
     const [prsError, setPrsError] = useState('');
     const [prsRead, setPrsRead] = useState(false); // the list has been read from GitHub for this repository
+    const [localWork, setLocalWork] = useState<LocalWork | null>(null); // the inbox's checked-out branch and recent commits
     const [subject, setSubject] = useState<Subject | null>(null);
     // A review the command line or a link asked for.
     const [launch, setLaunch] = useState<{kind: 'local'; review: main.LocalReview} | {kind: 'pr'; number: number} | null>(null);
@@ -108,6 +115,9 @@ function App() {
     const [split, setSplit] = useState(() => readStore('git-tree-compare:split', false));
     const [fullFile, setFullFile] = useState(() => readStore('git-tree-compare:fullFile', false));
     const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+    // The folder tree or the "By state" sections, chosen per kind of review.
+    const [treeViews, setTreeViews] = useState<TreeViews>(() => parseTreeViews(readStore<unknown>(TREE_VIEW_KEY, null)));
+    const [closedSections, setClosedSections] = useState<Set<SectionKind>>(() => new Set(['reviewed', 'folded']));
     const [notes, setNotes] = useState<Record<string, string>>({});
     const [noteOpen, setNoteOpen] = useState(false);
     const [prFileURL, setPrFileURL] = useState(''); // this file's diff on the open pull request
@@ -160,7 +170,17 @@ function App() {
         return q ? changes.filter(c => c.path.toLowerCase().includes(q)) : changes;
     }, [changes, filter]);
     const tree = useMemo(() => buildTree(visibleChanges, sort), [visibleChanges, sort]);
-    const files = useMemo(() => flattenFiles(tree, collapsed), [tree, collapsed]);
+    const treeView = subject ? treeViews[subject.kind] : 'folders';
+    const sections = useMemo(() => groupByState({files: visibleChanges, record}), [visibleChanges, record]);
+    // The files in the order on screen, skipping closed folders and sections, so arrow keys and x follow what is shown.
+    const files = useMemo(
+        () => (treeView === 'state'
+            ? sections.filter(s => !closedSections.has(s.kind)).flatMap(s => s.files)
+            : flattenFiles(tree, collapsed)),
+        [treeView, sections, closedSections, tree, collapsed],
+    );
+    // The ruler shows every file, closed sections included, in the same order.
+    const rulerFiles = useMemo(() => (treeView === 'state' ? sections.flatMap(s => s.files) : files), [treeView, sections, files]);
     const reviewed = useMemo(
         () => Object.fromEntries(changes.filter(c => isReviewed(record, c.path)).map(c => [c.path, 'reviewed'])),
         [changes, record],
@@ -361,6 +381,7 @@ function App() {
         closeReview();
         setPrs([]);
         setPrsRead(false);
+        setLocalWork(null);
         setCollapsed(new Set(readStore<string[]>(`git-tree-compare:collapsed:${repo}`, [])));
         setNotes(readStore<Record<string, string>>(`git-tree-compare:notes:${repo}`, {}));
         CurrentPRNumber(repo)
@@ -390,6 +411,40 @@ function App() {
         setSubject({kind: 'local', review});
     }
 
+    // Opens an inbox row: a pull request, or a local review of the branch or commit.
+    function openRow(row: InboxRow) {
+        switch (row.kind) {
+            case 'pr':
+                setSubject({kind: 'pr', number: row.pr.number});
+                return;
+            case 'branch':
+                ReviewBranch(repo, row.branch.name, '').then(openLocal).catch(e => setError(String(e)));
+                return;
+            case 'commit':
+                ReviewCommit(repo, row.commit.hash).then(openLocal).catch(e => setError(String(e)));
+                return;
+            default: {
+                const _exhaustive: never = row;
+                return _exhaustive;
+            }
+        }
+    }
+
+    function toggleTreeView() {
+        if (!subject) return;
+        const kind = subject.kind;
+        setTreeViews(views => ({...views, [kind]: views[kind] === 'state' ? 'folders' : 'state'}));
+    }
+
+    function toggleSection(kind: SectionKind) {
+        setClosedSections(prev => {
+            const next = new Set(prev);
+            if (next.has(kind)) next.delete(kind);
+            else next.add(kind);
+            return next;
+        });
+    }
+
     // The open pull requests, refreshed every minute while the window is in front.
     useEffect(() => {
         if (!repo) return;
@@ -404,6 +459,16 @@ function App() {
             })
             .catch(e => !cancelled && setPrsError(String(e)))
             .finally(() => !cancelled && setPrsLoading(false));
+        return () => {
+            cancelled = true;
+        };
+    }, [repo, pollTick]);
+
+    // Local work for the inbox, read with the pull requests. It needs no GitHub.
+    useEffect(() => {
+        if (!repo) return;
+        let cancelled = false;
+        ListLocal(repo).then(found => !cancelled && setLocalWork(found)).catch(() => !cancelled && setLocalWork(null));
         return () => {
             cancelled = true;
         };
@@ -537,6 +602,7 @@ function App() {
     useEffect(() => writeStore('git-tree-compare:split', split), [split]);
     useEffect(() => writeStore('git-tree-compare:fullFile', fullFile), [fullFile]);
     useEffect(() => writeStore('git-tree-compare:ignoreWS', ignoreWS), [ignoreWS]);
+    useEffect(() => writeStore(TREE_VIEW_KEY, treeViews), [treeViews]);
 
     useEffect(() => {
         if (!selected || !scope) {
@@ -671,6 +737,9 @@ function App() {
                     return;
                 case 'b':
                     setIgnoreWS(v => !v);
+                    return;
+                case 'g':
+                    toggleTreeView();
                     return;
                 case 'n':
                     if (selected) setNoteOpen(v => !v);
@@ -854,6 +923,7 @@ function App() {
         ...(reviewing ? [
             {id: 'ws', label: ignoreWS ? 'Show whitespace changes' : 'Ignore whitespace changes', hint: 'b', run: () => setIgnoreWS(v => !v)},
             {id: 'sort', label: sort === 'name' ? 'Sort files by size of change' : 'Sort files by name', run: () => setSort(s => (s === 'name' ? 'size' : 'name'))},
+            {id: 'view', label: treeView === 'state' ? 'Show files by folder' : 'Group files by state', hint: 'g', run: toggleTreeView},
             {id: 'run', label: 'Run a command', hint: 't', run: () => setCmdOpen(v => !v)},
             {id: 'summary', label: 'Copy summary as Markdown', run: copySummary},
             {id: 'patch', label: 'Export patch', run: exportPatch},
@@ -957,11 +1027,12 @@ function App() {
                 <PRList
                     repo={repo}
                     prs={prs}
+                    local={localWork}
                     loading={prsLoading}
                     error={prsError}
                     reviewedCount={p => storedReviewedCount(repo, p)}
                     active={!picking && !paletteOpen && !helpOpen && openNumber === null}
-                    onOpen={p => setSubject({kind: 'pr', number: p.number})}
+                    onOpen={openRow}
                     onRefresh={() => setPollTick(t => t + 1)}
                     onChangeRepo={chooseRepo}
                     onCommands={() => setPaletteOpen(true)}
@@ -1005,7 +1076,7 @@ function App() {
                     </header>
 
                     <ReviewRuler
-                        files={files}
+                        files={rulerFiles}
                         current={selected?.path}
                         reviewed={reviewed}
                         changed={changedSinceReview}
@@ -1029,6 +1100,13 @@ function App() {
                                         value={filter}
                                         onChange={e => setFilter(e.target.value)}
                                     />
+                                    <Button
+                                        aria-pressed={treeView === 'state'}
+                                        onClick={toggleTreeView}
+                                        title={treeView === 'state' ? 'Show files by folder (g)' : 'Group files by state (g)'}
+                                    >
+                                        {treeView === 'state' ? 'By state' : 'Folders'}
+                                    </Button>
                                 </div>
                             )}
                             {picked.length > 1 && (
@@ -1049,7 +1127,7 @@ function App() {
                             {changes.length > 0 && visibleChanges.length === 0 && (
                                 <Empty title="No matches" hint={`Nothing matches "${filter}".`} mascot={<OwlSearch/>}/>
                             )}
-                            {tree.length > 0 && (
+                            {tree.length > 0 && treeView === 'folders' && (
                                 <TreeList
                                     nodes={tree}
                                     selectedPath={selected?.path}
@@ -1061,6 +1139,23 @@ function App() {
                                     changedSinceReview={changedSinceReview}
                                     unsynced={unsynced}
                                     onToggle={toggleFolder}
+                                    onToggleReviewed={path => toggleFiles([path])}
+                                    onPick={pickFile}
+                                    onContextMenu={openFileMenu}
+                                />
+                            )}
+                            {treeView === 'state' && (
+                                <StateList
+                                    sections={sections}
+                                    closed={closedSections}
+                                    onToggleSection={toggleSection}
+                                    selectedPath={selected?.path}
+                                    picked={pickedSet}
+                                    reviewed={reviewed}
+                                    notes={notes}
+                                    comments={commentCounts}
+                                    changedSinceReview={changedSinceReview}
+                                    unsynced={unsynced}
                                     onToggleReviewed={path => toggleFiles([path])}
                                     onPick={pickFile}
                                     onContextMenu={openFileMenu}
@@ -1155,19 +1250,23 @@ function Empty({title, hint, mascot, children}: {title: string; hint?: string; m
     );
 }
 
-type TreeProps = {
+// What a file row needs, in the folder tree and in the "By state" sections alike.
+type RowProps = {
     selectedPath?: string;
     picked: Set<string>;
-    collapsed: Set<string>;
     reviewed: Record<string, string>;
     notes: Record<string, string>;
     comments: Record<string, number>;
     changedSinceReview: Set<string>;
     unsynced: Set<string>;
-    onToggle: (path: string) => void;
     onToggleReviewed: (path: string) => void;
     onPick: (file: FileChange, e: ReactMouseEvent) => void;
     onContextMenu: (file: FileChange, e: ReactMouseEvent) => void;
+};
+
+type TreeProps = RowProps & {
+    collapsed: Set<string>;
+    onToggle: (path: string) => void;
 };
 
 function TreeList(props: TreeProps & {nodes: TreeNode[]; depth?: number}) {
@@ -1184,35 +1283,7 @@ function TreeItem(props: TreeProps & {node: TreeNode; depth: number}) {
     const indent = {paddingLeft: 8 + depth * 14};
 
     if (node.file) {
-        const file = node.file;
-        const active = file.path === rest.selectedPath;
-        const isReviewed = !!rest.reviewed[file.path];
-        const classes = ['row', 'file', active && 'active', rest.picked.has(file.path) && 'picked', node.generated && 'generated', isReviewed && 'reviewed']
-            .filter(Boolean).join(' ');
-        return (
-            <li>
-                <div className={classes} style={indent} onClick={e => rest.onPick(file, e)} onContextMenu={e => rest.onContextMenu(file, e)} aria-selected={active}>
-                    <input
-                        type="checkbox"
-                        className="review"
-                        checked={isReviewed}
-                        onClick={e => e.stopPropagation()}
-                        onChange={() => rest.onToggleReviewed(file.path)}
-                        aria-label={`Reviewed: ${file.path}`}
-                        title="Mark reviewed (x)"
-                    />
-                    <span className={`status status-${file.status}`} title={STATUS_LABEL[file.status]}>{file.status}</span>
-                    <span className="name" title={file.path}>{node.name}</span>
-                    {rest.notes[file.path] && <span className="note-dot" title="Has a note">●</span>}
-                    {rest.comments[file.path] > 0 && (
-                        <span className="cmt-count" title="Open review comments on GitHub">{rest.comments[file.path]}</span>
-                    )}
-                    {rest.changedSinceReview.has(file.path) && <span className="changed-tag" title="Changed by a push after you reviewed it">changed</span>}
-                    {rest.unsynced.has(file.path) && <span className="unsynced" title="Not on GitHub yet, retrying">●</span>}
-                    <span className="counts"><span className="added">+{file.added}</span> <span className="deleted">−{file.deleted}</span></span>
-                </div>
-            </li>
-        );
+        return <FileRow file={node.file} label={node.name} depth={depth} dim={node.generated} {...rest}/>;
     }
 
     const open = !rest.collapsed.has(node.path);
@@ -1242,6 +1313,76 @@ function TreeItem(props: TreeProps & {node: TreeNode; depth: number}) {
                 />
             )}
         </li>
+    );
+}
+
+// FileRow is one changed file: its review checkbox, status, name and markers.
+function FileRow(props: RowProps & {file: FileChange; label: ReactNode; depth: number; dim?: boolean; noise?: NoiseReason | null}) {
+    const {file, label, depth, dim, noise, ...rest} = props;
+    const active = file.path === rest.selectedPath;
+    const isReviewed = !!rest.reviewed[file.path];
+    const classes = ['row', 'file', active && 'active', rest.picked.has(file.path) && 'picked', dim && 'generated', isReviewed && 'reviewed']
+        .filter(Boolean).join(' ');
+    return (
+        <li>
+            <div className={classes} style={{paddingLeft: 8 + depth * 14}} onClick={e => rest.onPick(file, e)} onContextMenu={e => rest.onContextMenu(file, e)} aria-selected={active}>
+                <input
+                    type="checkbox"
+                    className="review"
+                    checked={isReviewed}
+                    onClick={e => e.stopPropagation()}
+                    onChange={() => rest.onToggleReviewed(file.path)}
+                    aria-label={`Reviewed: ${file.path}`}
+                    title="Mark reviewed (x)"
+                />
+                <span className={`status status-${file.status}`} title={STATUS_LABEL[file.status]}>{file.status}</span>
+                <span className="name" title={file.path}>{label}</span>
+                {noise && <span className="noise-tag">{NOISE_LABEL[noise]}</span>}
+                {rest.notes[file.path] && <span className="note-dot" title="Has a note">●</span>}
+                {rest.comments[file.path] > 0 && (
+                    <span className="cmt-count" title="Open review comments on GitHub">{rest.comments[file.path]}</span>
+                )}
+                {rest.changedSinceReview.has(file.path) && <span className="changed-tag" title="Changed by a push after you reviewed it">changed</span>}
+                {rest.unsynced.has(file.path) && <span className="unsynced" title="Not on GitHub yet, retrying">●</span>}
+                <span className="counts"><span className="added">+{file.added}</span> <span className="deleted">−{file.deleted}</span></span>
+            </div>
+        </li>
+    );
+}
+
+// StateList is the "By state" tree: one section per review state, files in reading order, each
+// named by its file name with its folder beside it. Noise sits in Folded with the reason.
+function StateList(props: RowProps & {sections: Section[]; closed: Set<SectionKind>; onToggleSection: (kind: SectionKind) => void}) {
+    const {sections, closed, onToggleSection, ...rest} = props;
+    return (
+        <ul className="tree-list">
+            {sections.map(section => {
+                const open = !closed.has(section.kind);
+                return (
+                    <li key={section.kind}>
+                        <div className="row folder section-head" onClick={() => onToggleSection(section.kind)} aria-expanded={open}>
+                            <span className={open ? 'caret open' : 'caret'}>▸</span>
+                            <span className="name">{SECTION_TITLE[section.kind]}</span>
+                            <span className="counts">{section.files.length}</span>
+                        </div>
+                        {open && (
+                            <ul className="tree-list">
+                                {section.files.map(file => (
+                                    <FileRow
+                                        key={file.path}
+                                        file={file}
+                                        label={<>{basename(file.path)}<span className="dir">{folderOf(file.path)}</span></>}
+                                        depth={1}
+                                        noise={section.kind === 'folded' ? noiseOf(file) : null}
+                                        {...rest}
+                                    />
+                                ))}
+                            </ul>
+                        )}
+                    </li>
+                );
+            })}
+        </ul>
     );
 }
 
@@ -1583,7 +1724,7 @@ const STATUS_LABEL: Record<string, string> = {
 const SHORTCUT_GROUPS: {title: string; rows: [string, string][]}[] = [
     {title: 'Pull requests', rows: [
         ['↑ ↓', 'Move through the list'],
-        ['Enter', 'Open the pull request'],
+        ['Enter', 'Open the pull request, branch or commit'],
         ['p', 'Back to all pull requests'],
         ['c', 'Show comments'],
     ]},
@@ -1593,6 +1734,7 @@ const SHORTCUT_GROUPS: {title: string; rows: [string, string][]}[] = [
         ['⌘P', 'Go to file'],
         ['⇧⌘F', 'Search in the changed files'],
         ['o', 'Open file in the default editor'],
+        ['g', 'Group files by state, or show them by folder'],
     ]},
     {title: 'Reviewing', rows: [
         ['x', 'Mark reviewed here and on GitHub, then go to the next file'],

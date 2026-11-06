@@ -1,5 +1,6 @@
 import {useEffect, useMemo, useRef, useState} from 'react';
 import type {main} from '../wailsjs/go/models';
+import {inboxGroups, type InboxRow, type LocalWork, rowKey} from './inbox';
 import {basename, inkShare, tickWeight, timeAgo} from './util';
 import {Button} from './ui/button';
 import {Kbd} from './ui/kbd';
@@ -7,21 +8,17 @@ import {OwlTray, Snail} from './mascots';
 
 export type PR = main.PRInfo;
 
-const GROUPS: {id: string; title: string}[] = [
-    {id: 'requested', title: 'Waiting for your review'},
-    {id: 'mine', title: 'Your pull requests'},
-    {id: 'other', title: 'Other open pull requests'},
-];
-
-// PRList is the home of a repository: every open pull request, the ones asking for this reviewer first.
-export function PRList({repo, prs, loading, error, reviewedCount, active, onOpen, onRefresh, onChangeRepo, onCommands}: {
+// PRList is the home of a repository: every open pull request, the ones asking for this reviewer
+// first, and local work (the checked-out branch, recent commits) to review without one.
+export function PRList({repo, prs, local, loading, error, reviewedCount, active, onOpen, onRefresh, onChangeRepo, onCommands}: {
     repo: string;
     prs: PR[];
+    local: LocalWork | null;
     loading: boolean;
     error: string;
     reviewedCount: (pr: PR) => number;
     active: boolean; // false while a dialog is on top, so the keys go there
-    onOpen: (pr: PR) => void;
+    onOpen: (row: InboxRow) => void;
     onRefresh: () => void;
     onChangeRepo: () => void;
     onCommands: () => void; // opens the palette, which also reviews a commit or branch
@@ -30,14 +27,8 @@ export function PRList({repo, prs, loading, error, reviewedCount, active, onOpen
     const [index, setIndex] = useState(0);
     const filterInput = useRef<HTMLInputElement>(null);
 
-    const groups = useMemo(() => {
-        const q = query.trim().toLowerCase();
-        const found = q
-            ? prs.filter(pr => `${pr.number} ${pr.title} ${pr.author} ${pr.headRefName}`.toLowerCase().includes(q))
-            : prs;
-        return GROUPS.map(g => ({...g, prs: found.filter(pr => pr.group === g.id)})).filter(g => g.prs.length);
-    }, [prs, query]);
-    const ordered = useMemo(() => groups.flatMap(g => g.prs), [groups]);
+    const groups = useMemo(() => inboxGroups({prs, local, query}), [prs, local, query]);
+    const ordered = useMemo(() => groups.flatMap(g => g.rows), [groups]);
     const current = ordered[Math.min(index, ordered.length - 1)];
 
     useEffect(() => {
@@ -104,7 +95,7 @@ export function PRList({repo, prs, loading, error, reviewedCount, active, onOpen
                     <span>When one opens on GitHub it appears here within a minute.</span>
                 </div>
             )}
-            {!error && prs.length > 0 && ordered.length === 0 && (
+            {query.trim() !== '' && ordered.length === 0 && (
                 <div className="prs-note"><span>Nothing matches “{query}”.</span></div>
             )}
 
@@ -113,14 +104,14 @@ export function PRList({repo, prs, loading, error, reviewedCount, active, onOpen
                     <section className="prs-group" key={group.id}>
                         <h2>{group.title}</h2>
                         <ul>
-                            {group.prs.map(pr => (
-                                <li key={pr.number}>
-                                    <PRRow
-                                        pr={pr}
-                                        selected={pr === current}
-                                        reviewed={reviewedCount(pr)}
-                                        onOpen={() => onOpen(pr)}
-                                        onHover={() => setIndex(ordered.indexOf(pr))}
+                            {group.rows.map(row => (
+                                <li key={rowKey(row)}>
+                                    <InboxRowView
+                                        row={row}
+                                        selected={row === current}
+                                        reviewedCount={reviewedCount}
+                                        onOpen={() => onOpen(row)}
+                                        onHover={() => setIndex(ordered.indexOf(row))}
                                     />
                                 </li>
                             ))}
@@ -129,6 +120,65 @@ export function PRList({repo, prs, loading, error, reviewedCount, active, onOpen
                 ))}
             </div>
         </main>
+    );
+}
+
+function InboxRowView({row, selected, reviewedCount, onOpen, onHover}: {
+    row: InboxRow;
+    selected: boolean;
+    reviewedCount: (pr: PR) => number;
+    onOpen: () => void;
+    onHover: () => void;
+}) {
+    switch (row.kind) {
+        case 'pr':
+            return <PRRow pr={row.pr} selected={selected} reviewed={reviewedCount(row.pr)} onOpen={onOpen} onHover={onHover}/>;
+        case 'branch':
+            return (
+                <LocalRow
+                    mark="Branch"
+                    name={`${row.branch.name} into ${row.branch.base}`}
+                    sub={`${row.branch.ahead === 1 ? '1 commit' : `${row.branch.ahead} commits`} not in ${row.branch.base}, checked out`}
+                    selected={selected}
+                    onOpen={onOpen}
+                    onHover={onHover}
+                />
+            );
+        case 'commit':
+            return (
+                <LocalRow
+                    mark={row.commit.short}
+                    name={row.commit.subject}
+                    sub={`${row.commit.author}, ${row.commit.when}`}
+                    selected={selected}
+                    onOpen={onOpen}
+                    onHover={onHover}
+                />
+            );
+        default: {
+            const _exhaustive: never = row;
+            return _exhaustive;
+        }
+    }
+}
+
+// LocalRow is a branch or commit to review without a pull request. Its marks stay on this machine.
+function LocalRow({mark, name, sub, selected, onOpen, onHover}: {
+    mark: string;
+    name: string;
+    sub: string;
+    selected: boolean;
+    onOpen: () => void;
+    onHover: () => void;
+}) {
+    return (
+        <button className={`pr-row local-row${selected ? ' selected' : ''}`} onClick={onOpen} onMouseMove={onHover}>
+            <span className="pr-num">{mark}</span>
+            <span className="pr-main">
+                <span className="pr-name">{name}</span>
+                <span className="pr-sub">{sub}</span>
+            </span>
+        </button>
     );
 }
 

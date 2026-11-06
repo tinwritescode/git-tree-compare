@@ -12,7 +12,8 @@ Created by **Tin Nguyen**.
 - Every open pull request in a repository, with the ones waiting for your review first
 - Open a pull request without checking it out: your branch and uncommitted work stay as they are
 - Review a single commit, or a branch against its base, without a pull request
-- Changed files as a folder tree, with status, line counts, and filtering
+- Changed files as a folder tree, or grouped by review state in reading order, with status, line counts, and filtering
+- Lock files, generated files, pure renames and whitespace-only changes folded out of the way
 - Split or unified diff, optional whitespace ignore, and hunk navigation
 - Press `x` to mark a file reviewed, here and on GitHub, then move to the next unreviewed file
 - Viewed state comes from GitHub, and files changed since you viewed them are flagged
@@ -57,9 +58,11 @@ To install the `git-tree-compare` command, press `⌘K` in the app and choose **
 
 The app lists every open pull request and refreshes the list every minute. If your checked-out branch has an open pull request, it opens directly. Press `p` to go back to the list.
 
+The **Local** group lists your checked-out branch, when it has commits that the default branch lacks, and the last 5 commits on `HEAD`. Open one to review it without a pull request.
+
 ### Review a commit or a branch
 
-Press `⌘K` and choose **Review a commit…** or **Review a branch…**. Pick from the list, or type any ref git understands, such as `HEAD~2`. For a branch, then pick the base it goes into; the default branch is listed first.
+Open your branch or a recent commit from the **Local** group in the list, or press `⌘K` and choose **Review a commit…** or **Review a branch…**. Pick from the list, or type any ref git understands, such as `HEAD~2`. For a branch, then pick the base it goes into; the default branch is listed first.
 
 From a terminal:
 
@@ -80,6 +83,15 @@ git-tree-compare . --branch feat/x --base staging
 - Press `x` on a reviewed file to unmark it, here and on GitHub.
 - If GitHub cannot be reached, the mark stays on screen and the app keeps trying.
 - A file tagged **changed** was changed by a push after you reviewed it.
+
+### Group files by state
+
+Press `g`, or the button beside the file filter, to switch between the folder tree and **By state**. Pull requests start by state; commits and branches start as folders. The app remembers your choice for each.
+
+- **To review**, **Changed since you viewed** and **Reviewed** (closed at first) hold the files by their review state.
+- Files are in reading order: migrations and schema, then types and models, code, tests, docs and config. A test sits right after the file it tests.
+- **Folded** (closed at first) holds lock files, files marked `linguist-generated` in `.gitattributes`, renames with no changed lines, and whitespace-only changes, each with its reason. They still count toward your progress and can be marked.
+- `↑` `↓` and `x` follow the order on screen.
 
 ### Right-click a file
 
@@ -102,8 +114,8 @@ Press `?` in the app to see this list.
 
 | Keys | Action |
 | --- | --- |
-| `↑` `↓` | Previous or next file, or pull request in the list |
-| `Enter` | Open the pull request |
+| `↑` `↓` | Previous or next file, or row in the list |
+| `Enter` | Open the pull request, branch or commit |
 | `p` | Back to all pull requests |
 | `/` | Filter |
 | `⌘K` | All commands |
@@ -119,6 +131,7 @@ Press `?` in the app to see this list.
 | `n` | Note for the file |
 | `c` | Comments |
 | `o` | Open the file in your editor |
+| `g` | Group files by state, or show them by folder |
 | `t` | Run a command |
 | `r` | Refresh |
 | `` Ctrl+` `` | Show or hide the terminal |

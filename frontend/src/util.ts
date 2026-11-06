@@ -31,6 +31,11 @@ export function basename(path: string): string {
     return path.split(/[\\/]/).filter(Boolean).pop() ?? path;
 }
 
+// folderOf returns the folders of a path with a trailing slash, or '' for a file at the root.
+export function folderOf(path: string): string {
+    return path.slice(0, path.lastIndexOf('/') + 1);
+}
+
 // timeAgo says how long ago an ISO time was, in the largest unit that fits.
 export function timeAgo(iso: string, now = Date.now()): string {
     const seconds = (now - new Date(iso).getTime()) / 1000;

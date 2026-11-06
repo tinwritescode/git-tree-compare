@@ -1787,6 +1787,31 @@ button:disabled {
     font-size: 13px;
 }
 
+/* Why a folded file is noise: quieter than "changed", which asks for a second look. */
+.noise-tag {
+    flex: none;
+    color: var(--text-dim);
+    font-size: 13px;
+}
+
+/* In the "By state" sections a file is named by its file name, with its folder after it. */
+.row .dir {
+    margin-left: 6px;
+    color: var(--text-dim);
+    font-size: 13px;
+}
+
+.section-head .name {
+    font-weight: 600;
+}
+
+/* A short commit hash or "Branch" sits where a pull request number goes. */
+.local-row .pr-num {
+    overflow: hidden;
+    font-size: 13px;
+    text-overflow: ellipsis;
+}
+
 .unsynced {
     flex: none;
     color: var(--warn-text);
