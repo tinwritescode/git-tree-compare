@@ -15,6 +15,9 @@ type LocalReview struct {
 	Detail string `json:"detail"` // author and age of a commit, or how many commits a branch adds
 	Base   string `json:"base"`
 	Head   string `json:"head"`
+	// A branch's name and its base's, as origin names them, for opening a pull request. Empty for a commit.
+	Branch     string `json:"branch,omitempty"`
+	BaseBranch string `json:"baseBranch,omitempty"`
 }
 
 // RefList is what the in-app pickers offer: branches, newest first, and recent commits.
@@ -121,11 +124,13 @@ func ReviewBranch(repo, branch, base string) (LocalReview, error) {
 		return LocalReview{}, err
 	}
 	return LocalReview{
-		Kind:   "branch",
-		Title:  headName + " into " + baseName,
-		Detail: plural(strings.TrimSpace(count), "commit"),
-		Base:   from,
-		Head:   head,
+		Kind:       "branch",
+		Title:      headName + " into " + baseName,
+		Detail:     plural(strings.TrimSpace(count), "commit"),
+		Base:       from,
+		Head:       head,
+		Branch:     strings.TrimPrefix(headName, "origin/"),
+		BaseBranch: strings.TrimPrefix(baseName, "origin/"),
 	}, nil
 }
 

@@ -1,0 +1,9 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["title", "body"],
+  "properties": {
+    "title": {"type": "string", "description": "One line, under 72 characters, in the imperative."},
+    "body": {"type": "string", "description": "The pull request's description, in Markdown."}
+  }
+}

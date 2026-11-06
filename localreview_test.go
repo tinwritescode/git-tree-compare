@@ -123,6 +123,10 @@ func TestReviewBranchInAClone(t *testing.T) {
 	if r.Title != "origin/feat into origin/main" {
 		t.Fatalf("title = %q", r.Title)
 	}
+	// A pull request is opened from the branch's name on origin, into the base's.
+	if r.Branch != "feat" || r.BaseBranch != "main" {
+		t.Fatalf("branch %q, base %q", r.Branch, r.BaseBranch)
+	}
 	if got := changedPaths(t, clone, r); !reflect.DeepEqual(got, []string{"A f.txt"}) {
 		t.Fatalf("changed = %v", got)
 	}
@@ -144,6 +148,9 @@ func TestReviewBranchWithARevAsBase(t *testing.T) {
 	}
 	if r.Title != "main into HEAD~1" {
 		t.Fatalf("title = %q", r.Title)
+	}
+	if r.Branch != "main" || r.BaseBranch != "HEAD~1" {
+		t.Fatalf("branch %q, base %q", r.Branch, r.BaseBranch)
 	}
 	if got := changedPaths(t, clone, r); !reflect.DeepEqual(got, []string{"A local.txt"}) {
 		t.Fatalf("changed = %v", got)

@@ -1,0 +1,21 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["summary", "threads"],
+  "properties": {
+    "summary": {"type": "string", "description": "At most three short lines on what changed since the review."},
+    "threads": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["threadId", "status", "evidence"],
+        "properties": {
+          "threadId": {"type": "string", "description": "The thread's id exactly as given."},
+          "status": {"type": "string", "enum": ["addressed", "not_addressed", "unclear"]},
+          "evidence": {"type": "string", "description": "One sentence naming the code that shows it."}
+        }
+      }
+    }
+  }
+}

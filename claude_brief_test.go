@@ -36,7 +36,7 @@ func TestBriefTaskReadsTheCheckoutAndIsCachedPerCommits(t *testing.T) {
 	if !slices.Equal(task.Tools, []string{"Read", "Grep", "Glob"}) || task.Model != "sonnet" || task.Session.Mode != sessionNone {
 		t.Fatalf("task = %+v", task)
 	}
-	if task.Cache == nil || *task.Cache != (cacheKey{Repo: "/r", Base: base, Head: testHead, Kind: "brief", Version: promptVersion(briefPrompt, briefSchema, briefInputVersion), Model: "sonnet"}) {
+	if task.Cache == nil || *task.Cache != (cacheKey{Repo: "/r", Base: base, Head: testHead, Kind: "brief", Version: promptVersion(briefPrompt, briefSchema, changeInputVersion), Model: "sonnet"}) {
 		t.Fatalf("cache = %+v", task.Cache)
 	}
 	if task.Refresh || task.BudgetUSD != briefBudgetUSD {

@@ -18,8 +18,8 @@ var briefPrompt string
 var briefSchema string
 
 const (
-	// briefInputVersion changes when what goes on stdin changes, to miss briefs made from the old input.
-	briefInputVersion = "1"
+	// changeInputVersion changes when what goes on stdin changes, to miss answers made from the old input.
+	changeInputVersion = "1"
 	// maxBriefDiff caps the diff sent on stdin. Claude reads the rest from the checkout.
 	maxBriefDiff = 400_000
 	maxBriefText = 20_000
@@ -39,23 +39,36 @@ type ChangeRef struct {
 
 // briefTask is the brief as a task for the runner. It reads the checkout and is kept per commits and model.
 func briefTask(id string, req ChangeRef) (claudeTask, error) {
+	return changeTask(id, req, changeAsk{Kind: "brief", Prompt: briefPrompt, Schema: briefSchema, BudgetUSD: briefBudgetUSD})
+}
+
+// changeAsk is one question about the whole change, answered with a JSON schema.
+type changeAsk struct {
+	Kind, Prompt, Schema string
+	BudgetUSD            float64
+}
+
+// changeTask asks about the whole change: the description and diff on stdin, the checkout through
+// the read tools, and the answer kept per commits and model. The brief, findings and a PR
+// description all ask this way.
+func changeTask(id string, req ChangeRef, ask changeAsk) (claudeTask, error) {
 	if !commitID.MatchString(req.Base) {
 		return claudeTask{}, fmt.Errorf("%q is not a commit id", req.Base)
 	}
 	return claudeTask{
 		ID:        id,
-		Kind:      "brief",
-		Prompt:    briefPrompt,
-		Schema:    briefSchema,
+		Kind:      ask.Kind,
+		Prompt:    ask.Prompt,
+		Schema:    ask.Schema,
 		Input:     func() (string, error) { return changeInput(req) },
 		Model:     req.Model,
-		BudgetUSD: briefBudgetUSD,
+		BudgetUSD: ask.BudgetUSD,
 		Tools:     claudeReadTools,
 		Repo:      req.Repo,
 		Head:      req.Head,
 		Cache: &cacheKey{
-			Repo: req.Repo, Base: req.Base, Head: req.Head, Kind: "brief",
-			Version: promptVersion(briefPrompt, briefSchema, briefInputVersion), Model: req.Model,
+			Repo: req.Repo, Base: req.Base, Head: req.Head, Kind: ask.Kind,
+			Version: promptVersion(ask.Prompt, ask.Schema, changeInputVersion), Model: req.Model,
 		},
 		Refresh: req.Fresh,
 	}, nil

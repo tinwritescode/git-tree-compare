@@ -1,0 +1,24 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["findings"],
+  "properties": {
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "line", "side", "kind", "confidence", "title", "body"],
+        "properties": {
+          "path": {"type": "string", "description": "A changed file, exactly as the diff names it after b/."},
+          "line": {"type": "integer", "description": "A line the diff shows on that side."},
+          "side": {"type": "string", "enum": ["RIGHT", "LEFT"], "description": "RIGHT for the new file, LEFT for a removed line."},
+          "kind": {"type": "string", "enum": ["bug", "risk", "test", "nit"]},
+          "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+          "title": {"type": "string", "description": "One short sentence naming the problem."},
+          "body": {"type": "string", "description": "The comment as the reviewer would post it."}
+        }
+      }
+    }
+  }
+}

@@ -263,6 +263,8 @@ export namespace main {
 	    detail: string;
 	    base: string;
 	    head: string;
+	    branch?: string;
+	    baseBranch?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new LocalReview(source);
@@ -275,6 +277,8 @@ export namespace main {
 	        this.detail = source["detail"];
 	        this.base = source["base"];
 	        this.head = source["head"];
+	        this.branch = source["branch"];
+	        this.baseBranch = source["baseBranch"];
 	    }
 	}
 	export class LocalSubjects {
@@ -375,6 +379,26 @@ export namespace main {
 	        this.body = source["body"];
 	        this.url = source["url"];
 	        this.createdAt = source["createdAt"];
+	    }
+	}
+	export class PRCreateRequest {
+	    base: string;
+	    branch: string;
+	    head: string;
+	    title: string;
+	    body: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new PRCreateRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.base = source["base"];
+	        this.branch = source["branch"];
+	        this.head = source["head"];
+	        this.title = source["title"];
+	        this.body = source["body"];
 	    }
 	}
 	export class PRThread {
@@ -498,6 +522,52 @@ export namespace main {
 	    }
 	}
 	
+	export class PolishRequest {
+	    change: ChangeRef;
+	    body: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new PolishRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.change = this.convertValues(source["change"], ChangeRef);
+	        this.body = source["body"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class PushState {
+	    pushed: boolean;
+	    message: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new PushState(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.pushed = source["pushed"];
+	        this.message = source["message"];
+	    }
+	}
 	export class RefList {
 	    branches: string[];
 	    defaultBase: string;
@@ -512,6 +582,92 @@ export namespace main {
 	        this.branches = source["branches"];
 	        this.defaultBase = source["defaultBase"];
 	        this.commits = this.convertValues(source["commits"], CommitRef);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class ThreadText {
+	    id: string;
+	    path: string;
+	    line: number;
+	    comments: PRComment[];
+	
+	    static createFrom(source: any = {}) {
+	        return new ThreadText(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.path = source["path"];
+	        this.line = source["line"];
+	        this.comments = this.convertValues(source["comments"], PRComment);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class SinceRange {
+	    path: string;
+	    from: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new SinceRange(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.path = source["path"];
+	        this.from = source["from"];
+	    }
+	}
+	export class RereviewRequest {
+	    change: ChangeRef;
+	    prUrl: string;
+	    since: SinceRange[];
+	    threads: ThreadText[];
+	
+	    static createFrom(source: any = {}) {
+	        return new RereviewRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.change = this.convertValues(source["change"], ChangeRef);
+	        this.prUrl = source["prUrl"];
+	        this.since = this.convertValues(source["since"], SinceRange);
+	        this.threads = this.convertValues(source["threads"], ThreadText);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -720,6 +876,42 @@ export namespace main {
 	        this.found = source["found"];
 	    }
 	}
+	
+	export class SummaryRequest {
+	    change: ChangeRef;
+	    verdict: string;
+	    drafts: ReviewDraft[];
+	
+	    static createFrom(source: any = {}) {
+	        return new SummaryRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.change = this.convertValues(source["change"], ChangeRef);
+	        this.verdict = source["verdict"];
+	        this.drafts = this.convertValues(source["drafts"], ReviewDraft);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
 	export class UpdateInfo {
 	    current: string;
 	    latest: string;

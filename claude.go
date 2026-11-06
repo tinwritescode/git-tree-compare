@@ -2,7 +2,7 @@ package main
 
 // The Claude runner: the one place the app starts claude. A task says what to ask and how; the
 // runner checks its cache, checks the head out in a worktree, runs claude there, streams what it
-// does as claude:<taskId> events, and can stop it. Each kind of task (brief, and later others)
+// does as claude:<taskId> events, and can stop it. Each kind of task (brief, findings, polish, …)
 // only builds a claudeTask; nothing here knows about kinds.
 
 import (
@@ -35,9 +35,14 @@ const (
 
 // What each kind of task may spend, in US dollars. A question in Ask has its own budget.
 const (
-	briefBudgetUSD   = 1.0
-	explainBudgetUSD = 0.5
-	askBudgetUSD     = 1.0
+	briefBudgetUSD         = 1.0
+	explainBudgetUSD       = 0.5
+	askBudgetUSD           = 1.0
+	findingsBudgetUSD      = 2.0
+	rereviewBudgetUSD      = 0.5
+	polishBudgetUSD        = 0.1
+	summaryBudgetUSD       = 0.1
+	prDescriptionBudgetUSD = 0.5
 )
 
 // claudeReadTools are the only tools a task may give Claude: they read the checkout and change nothing.

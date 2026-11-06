@@ -220,6 +220,16 @@ func (a *App) SetThreadResolved(repo, threadID string, resolved bool) error {
 	return SetThreadResolved(repo, threadID, resolved)
 }
 
+// BranchPushState says whether origin has the reviewed commits of a branch, so a pull request can be opened.
+func (a *App) BranchPushState(repo, branch, head string) PushState {
+	return BranchPushState(repo, branch, head)
+}
+
+// CreatePR opens a pull request for a branch on origin and returns its URL. It never pushes.
+func (a *App) CreatePR(repo string, req PRCreateRequest) (string, error) {
+	return CreatePR(repo, req)
+}
+
 // ExportPatch writes the review's diff to a .patch file the user chooses. name, such as "pr-12",
 // goes into the suggested file name. It returns the saved path, or "" when the dialog was cancelled.
 func (a *App) ExportPatch(s Scope, name string) (string, error) {
@@ -327,26 +337,47 @@ func (a *App) ClaudeStatus() ClaudeInfo {
 // StartBrief writes the brief of a review in the background. Its progress arrives as
 // claude:<taskID> events, ending with one result or one error.
 func (a *App) StartBrief(taskID string, req ChangeRef) error {
-	task, err := briefTask(taskID, req)
-	if err != nil {
-		return err
-	}
-	return a.claude.start(task)
+	return a.startClaude(briefTask(taskID, req))
 }
 
 // StartExplain explains one hunk in the background, streamed as claude:<taskID> events.
 func (a *App) StartExplain(taskID string, req ExplainRequest) error {
-	task, err := explainTask(taskID, req)
-	if err != nil {
-		return err
-	}
-	return a.claude.start(task)
+	return a.startClaude(explainTask(taskID, req))
 }
 
 // StartAsk puts one question to the review's conversation with Claude, streamed as
 // claude:<taskID> events.
 func (a *App) StartAsk(taskID string, req AskRequest) error {
-	task, err := askTask(taskID, req)
+	return a.startClaude(askTask(taskID, req))
+}
+
+// StartFindings looks for places worth a comment, in the background.
+func (a *App) StartFindings(taskID string, req ChangeRef) error {
+	return a.startClaude(findingsTask(taskID, req))
+}
+
+// StartRereview sums up what changed since the reviewer's review, and checks their open threads against it.
+func (a *App) StartRereview(taskID string, req RereviewRequest) error {
+	return a.startClaude(rereviewTask(taskID, req))
+}
+
+// StartPolish rewrites a draft comment. The reviewer chooses whether to keep the rewrite.
+func (a *App) StartPolish(taskID string, req PolishRequest) error {
+	return a.startClaude(polishTask(taskID, req))
+}
+
+// StartReviewSummary drafts the review's summary from its verdict and draft comments.
+func (a *App) StartReviewSummary(taskID string, req SummaryRequest) error {
+	return a.startClaude(summaryTask(taskID, req))
+}
+
+// StartPRDescription drafts a title and body for a pull request of the branch under review.
+func (a *App) StartPRDescription(taskID string, req ChangeRef) error {
+	return a.startClaude(prDescriptionTask(taskID, req))
+}
+
+// startClaude starts a task a builder made, or returns why the builder refused.
+func (a *App) startClaude(task claudeTask, err error) error {
 	if err != nil {
 		return err
 	}
