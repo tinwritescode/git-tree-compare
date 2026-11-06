@@ -9,8 +9,8 @@ export type ClaudeEvent =
     | {kind: 'result'; json: unknown; text: string; costUsd: number | null}
     | {kind: 'error'; message: string};
 
-const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
-const str = (v: unknown): string | null => (typeof v === 'string' ? v : null);
+export const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
+export const str = (v: unknown): string | null => (typeof v === 'string' ? v : null);
 
 export function parseClaudeEvent(value: unknown): ClaudeEvent | null {
     if (!isRecord(value)) return null;
@@ -51,7 +51,7 @@ const isRiskLevel = (v: unknown): v is RiskLevel => v === 'low' || v === 'med' |
 const isLine = (v: unknown): v is number => typeof v === 'number' && Number.isInteger(v) && v >= 0;
 
 // listOf parses each entry of a list Claude wrote, dropping what does not parse.
-function listOf<T>(value: unknown, parse: (entry: Record<string, unknown>) => T | null): T[] {
+export function listOf<T>(value: unknown, parse: (entry: Record<string, unknown>) => T | null): T[] {
     if (!Array.isArray(value)) return [];
     return value.flatMap(entry => {
         const parsed = isRecord(entry) ? parse(entry) : null;
@@ -151,9 +151,12 @@ export function riskMarks(brief: Brief): Record<string, RiskMark> {
 }
 
 // Model per kind of task, chosen in ⌘K. The default comes from the backend.
-export const CLAUDE_TASKS = ['brief', 'explain', 'ask'] as const;
+export const CLAUDE_TASKS = ['brief', 'findings', 'rereview', 'explain', 'ask', 'polish', 'summary', 'prdesc'] as const;
 export type ClaudeTaskKind = (typeof CLAUDE_TASKS)[number];
-export const TASK_LABEL: Record<ClaudeTaskKind, string> = {brief: 'Brief', explain: 'Explain', ask: 'Ask'};
+export const TASK_LABEL: Record<ClaudeTaskKind, string> = {
+    brief: 'Brief', findings: 'Findings', rereview: 'Since your review', explain: 'Explain', ask: 'Ask', polish: 'Polish', summary: 'Review summary',
+    prdesc: 'PR description',
+};
 export type ClaudeModels = Partial<Record<ClaudeTaskKind, string>>;
 
 // Same rule as the backend: a model name never starts with a dash, so it cannot pass as a flag.
@@ -176,6 +179,15 @@ export function modelFor({models, kind, fallback}: {models: ClaudeModels; kind: 
 // The models the picker offers: the default, then the aliases claude resolves to the latest of each.
 export function modelChoices(defaultModel: string): string[] {
     return [...new Set([defaultModel, 'opus', 'sonnet', 'haiku'])];
+}
+
+// A pull request's title and body as Claude drafted them for a branch, for the reviewer to edit.
+export type PRDescription = {title: string; body: string};
+
+export function parsePRDescription(value: unknown): PRDescription | null {
+    if (!isRecord(value)) return null;
+    const title = str(value.title)?.trim().split('\n')[0].trim();
+    return title ? {title, body: str(value.body) ?? ''} : null;
 }
 
 // parseRepoList reads a saved list of repository paths.

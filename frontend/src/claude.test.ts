@@ -1,5 +1,8 @@
 import {describe, expect, it} from 'vitest';
-import {briefChip, type BriefRun, briefRunStep, briefState, modelChoices, modelFor, parseBrief, parseClaudeEvent, parseClaudeModels, parseRepoList, riskMarks} from './claude';
+import {
+    briefChip, type BriefRun, briefRunStep, briefState, modelChoices, modelFor, parseBrief, parseClaudeEvent, parseClaudeModels, parsePRDescription, parseRepoList,
+    riskMarks,
+} from './claude';
 
 const paths = new Set(['limit.go', 'limit_test.go', 'server.go']);
 
@@ -108,8 +111,8 @@ describe('riskMarks', () => {
 
 describe('model settings', () => {
     it('keeps a chosen model per task and falls back to the default', () => {
-        const models = parseClaudeModels({brief: 'sonnet', ask: 'haiku', findings: 'haiku', other: 3});
-        expect(models).toEqual({brief: 'sonnet', ask: 'haiku'});
+        const models = parseClaudeModels({brief: 'sonnet', ask: 'haiku', findings: 'haiku', later: 'opus', other: 3});
+        expect(models).toEqual({brief: 'sonnet', ask: 'haiku', findings: 'haiku'});
         expect(modelFor({models, kind: 'brief', fallback: 'claude-opus-5-5'})).toBe('sonnet');
         expect(modelFor({models: {}, kind: 'brief', fallback: 'claude-opus-5-5'})).toBe('claude-opus-5-5');
     });
@@ -129,5 +132,18 @@ describe('parseRepoList', () => {
     it('keeps strings only', () => {
         expect(parseRepoList(['/a', 3, '/b'])).toEqual(['/a', '/b']);
         expect(parseRepoList({})).toEqual([]);
+    });
+});
+
+describe('parsePRDescription', () => {
+    it('keeps a one-line title and the body', () => {
+        expect(parsePRDescription({title: '  Add limits\n', body: 'Adds a limit.'})).toEqual({title: 'Add limits', body: 'Adds a limit.'});
+    });
+
+    it('takes the first line of a title written on several, and refuses an answer without one', () => {
+        expect(parsePRDescription({title: 'Add limits\nand more', body: ''})).toEqual({title: 'Add limits', body: ''});
+        expect(parsePRDescription({title: ' ', body: 'x'})).toBeNull();
+        expect(parsePRDescription({body: 'x'})).toBeNull();
+        expect(parsePRDescription('Add limits')).toBeNull();
     });
 });
