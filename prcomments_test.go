@@ -5,7 +5,7 @@ import "testing"
 func TestParsePRComments(t *testing.T) {
 	out := []byte(`{"data":{"node":{
 		"reviewThreads":{"totalCount":2,"nodes":[
-			{"isResolved":false,"isOutdated":false,"path":"app.go","line":12,"originalLine":12,
+			{"id":"PRRT_kwDOA1","isResolved":false,"isOutdated":false,"path":"app.go","line":12,"originalLine":12,
 			 "comments":{"nodes":[{"author":{"login":"ana"},"body":"rename this","url":"https://x/1","createdAt":"2026-10-01T00:00:00Z"}]}},
 			{"isResolved":true,"isOutdated":true,"path":"git.go","line":null,"originalLine":7,
 			 "comments":{"nodes":[{"author":null,"body":"old","url":"https://x/2","createdAt":"2026-10-02T00:00:00Z"}]}}
@@ -16,7 +16,7 @@ func TestParsePRComments(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(d.Threads) != 2 || d.Threads[0].Path != "app.go" || d.Threads[0].Line != 12 || d.Threads[0].URL != "https://x/1" {
+	if len(d.Threads) != 2 || d.Threads[0].Path != "app.go" || d.Threads[0].Line != 12 || d.Threads[0].URL != "https://x/1" || d.Threads[0].ID != "PRRT_kwDOA1" {
 		t.Fatalf("threads: %+v", d.Threads)
 	}
 	if !d.Threads[1].Resolved || !d.Threads[1].Outdated || d.Threads[1].Line != 7 {

@@ -82,6 +82,10 @@ export function PrepareReview(arg1, arg2) {
   return window['go']['main']['App']['PrepareReview'](arg1, arg2);
 }
 
+export function ReplyToThread(arg1, arg2, arg3) {
+  return window['go']['main']['App']['ReplyToThread'](arg1, arg2, arg3);
+}
+
 export function ResizeTerminal(arg1, arg2) {
   return window['go']['main']['App']['ResizeTerminal'](arg1, arg2);
 }
@@ -106,6 +110,10 @@ export function SearchFiles(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['SearchFiles'](arg1, arg2, arg3, arg4);
 }
 
+export function SetThreadResolved(arg1, arg2, arg3) {
+  return window['go']['main']['App']['SetThreadResolved'](arg1, arg2, arg3);
+}
+
 export function SetViewed(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['SetViewed'](arg1, arg2, arg3, arg4);
 }
@@ -116,6 +124,10 @@ export function StartTerminal(arg1, arg2, arg3) {
 
 export function StopTerminal() {
   return window['go']['main']['App']['StopTerminal']();
+}
+
+export function SubmitReview(arg1, arg2, arg3) {
+  return window['go']['main']['App']['SubmitReview'](arg1, arg2, arg3);
 }
 
 export function TakePendingRepo() {

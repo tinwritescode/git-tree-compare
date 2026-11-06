@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os/exec"
@@ -39,6 +40,7 @@ type PRInfo struct {
 	ReviewDecision string `json:"reviewDecision"`
 	Mergeable      string `json:"mergeable"`
 	Group          string `json:"group"`
+	IsMine         bool   `json:"isMine"` // opened by the viewer, who cannot approve it or request changes on it
 }
 
 // ReviewTarget is the pair of commits a pull request's diff is taken between.
@@ -66,6 +68,7 @@ func parsePRList(out []byte, viewer string, requested map[int]bool) ([]PRInfo, e
 		if r.Author != nil && r.Author.Login != "" {
 			pr.Author = r.Author.Login
 		}
+		pr.IsMine = pr.Author == viewer
 		switch {
 		case requested[pr.Number]:
 			pr.Group = groupRequested
@@ -81,8 +84,16 @@ func parsePRList(out []byte, viewer string, requested map[int]bool) ([]PRInfo, e
 
 // runGH runs the gh CLI in repo. Its error message says what GitHub or gh reported.
 func runGH(repo string, args ...string) ([]byte, error) {
+	return runGHInput(repo, nil, args...)
+}
+
+// runGHInput runs the gh CLI in repo with input on stdin, such as a request body for `--input -`.
+func runGHInput(repo string, input []byte, args ...string) ([]byte, error) {
 	cmd := exec.Command("gh", args...)
 	cmd.Dir = repo
+	if input != nil {
+		cmd.Stdin = bytes.NewReader(input)
+	}
 	out, err := cmd.Output()
 	if err != nil {
 		if exit, ok := err.(*exec.ExitError); ok && len(exit.Stderr) > 0 {
@@ -140,8 +151,7 @@ func CurrentPRNumber(repo string) int {
 // remoteForPR picks the remote that hosts the pull request, so forks with an `upstream` work.
 // remotes is `git remote -v` output. It falls back to origin.
 func remoteForPR(remotes, prURL string) string {
-	path := strings.TrimPrefix(prURL, "https://github.com/")
-	slug, _, found := strings.Cut(path, "/pull/")
+	slug, _, found := parsePRURL(prURL)
 	if !found {
 		return "origin"
 	}
@@ -149,6 +159,20 @@ func remoteForPR(remotes, prURL string) string {
 		return name
 	}
 	return "origin"
+}
+
+// parsePRURL reads owner/name and the number from https://github.com/owner/name/pull/N.
+func parsePRURL(prURL string) (string, int, bool) {
+	path, ok := strings.CutPrefix(prURL, "https://github.com/")
+	if !ok {
+		return "", 0, false
+	}
+	slug, rest, ok := strings.Cut(path, "/pull/")
+	number, err := strconv.Atoi(rest)
+	if !ok || err != nil || number < 1 || !slugPattern.MatchString(slug) {
+		return "", 0, false
+	}
+	return slug, number, true
 }
 
 // remoteMatching returns the first remote whose URL ends in slug, such as owner/name.

@@ -15,6 +15,7 @@ type PRComment struct {
 // PRThread is an inline review thread on one line of one file.
 // Line is the line as it is now, or where it was when the thread went outdated.
 type PRThread struct {
+	ID       string      `json:"id"` // the GraphQL id that reply and resolve take
 	Path     string      `json:"path"`
 	Line     int         `json:"line"`
 	Resolved bool        `json:"resolved"`
@@ -39,7 +40,7 @@ const prCommentsQuery = `query($id: ID!) {
       reviewThreads(first: 100) {
         totalCount
         nodes {
-          isResolved isOutdated path line originalLine
+          id isResolved isOutdated path line originalLine
           comments(first: 50) { nodes { author { login } body url createdAt } }
         }
       }
@@ -77,6 +78,7 @@ func parsePRComments(out []byte) (PRDiscussion, error) {
 				ReviewThreads struct {
 					TotalCount int `json:"totalCount"`
 					Nodes      []struct {
+						ID           string `json:"id"`
 						IsResolved   bool   `json:"isResolved"`
 						IsOutdated   bool   `json:"isOutdated"`
 						Path         string `json:"path"`
@@ -101,6 +103,7 @@ func parsePRComments(out []byte) (PRDiscussion, error) {
 	d := PRDiscussion{Threads: []PRThread{}, Comments: []PRComment{}}
 	for _, n := range node.ReviewThreads.Nodes {
 		thread := PRThread{
+			ID:       n.ID,
 			Path:     n.Path,
 			Resolved: n.IsResolved,
 			Outdated: n.IsOutdated,

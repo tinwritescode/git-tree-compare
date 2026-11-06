@@ -247,6 +247,7 @@ export namespace main {
 	    }
 	}
 	export class PRThread {
+	    id: string;
 	    path: string;
 	    line: number;
 	    resolved: boolean;
@@ -260,6 +261,7 @@ export namespace main {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
 	        this.path = source["path"];
 	        this.line = source["line"];
 	        this.resolved = source["resolved"];
@@ -337,6 +339,7 @@ export namespace main {
 	    reviewDecision: string;
 	    mergeable: string;
 	    group: string;
+	    isMine: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new PRInfo(source);
@@ -360,6 +363,7 @@ export namespace main {
 	        this.reviewDecision = source["reviewDecision"];
 	        this.mergeable = source["mergeable"];
 	        this.group = source["group"];
+	        this.isMine = source["isMine"];
 	    }
 	}
 	
@@ -377,6 +381,62 @@ export namespace main {
 	        this.branches = source["branches"];
 	        this.defaultBase = source["defaultBase"];
 	        this.commits = this.convertValues(source["commits"], CommitRef);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class ReviewDraft {
+	    kind: string;
+	    path: string;
+	    line: number;
+	    side: string;
+	    body: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ReviewDraft(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.kind = source["kind"];
+	        this.path = source["path"];
+	        this.line = source["line"];
+	        this.side = source["side"];
+	        this.body = source["body"];
+	    }
+	}
+	export class ReviewSubmission {
+	    head: string;
+	    event: string;
+	    body: string;
+	    drafts: ReviewDraft[];
+	
+	    static createFrom(source: any = {}) {
+	        return new ReviewSubmission(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.head = source["head"];
+	        this.event = source["event"];
+	        this.body = source["body"];
+	        this.drafts = this.convertValues(source["drafts"], ReviewDraft);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

@@ -4,7 +4,7 @@ import {inboxGroups, type InboxRow, rowKey} from './inbox';
 
 const pr = (number: number, group: string, title = `PR ${number}`): main.PRInfo => ({
     id: `id${number}`, number, title, url: '', author: 'ana', headRefName: `b${number}`, headRefOid: '', baseRefName: 'main',
-    isDraft: false, additions: 1, deletions: 1, changedFiles: 1, updatedAt: '', reviewDecision: '', mergeable: '', group,
+    isDraft: false, additions: 1, deletions: 1, changedFiles: 1, updatedAt: '', reviewDecision: '', mergeable: '', isMine: false, group,
 });
 const commit = (short: string, subject: string): main.CommitRef => ({hash: `${short}000`, short, subject, author: 'bo', when: '1 hour ago'});
 const local = {

@@ -131,3 +131,13 @@ func TestPrepareReviewLeavesTheCheckoutAlone(t *testing.T) {
 		t.Fatalf("second run = %+v, %v", again, err)
 	}
 }
+
+func TestParsePRListMarksTheViewersOwn(t *testing.T) {
+	prs, err := parsePRList([]byte(`[{"number":1,"author":{"login":"me"}},{"number":2,"author":{"login":"ana"}}]`), "me", map[int]bool{1: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !prs[0].IsMine || prs[1].IsMine {
+		t.Fatalf("isMine = %v, %v", prs[0].IsMine, prs[1].IsMine)
+	}
+}

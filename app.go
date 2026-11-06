@@ -189,6 +189,21 @@ func (a *App) PRComments(repo, prID string) (PRDiscussion, error) {
 	return PRComments(repo, prID)
 }
 
+// SubmitReview posts a review with its verdict, summary and draft comments to the pull request at prURL.
+func (a *App) SubmitReview(repo, prURL string, s ReviewSubmission) error {
+	return SubmitReview(repo, prURL, s)
+}
+
+// ReplyToThread posts a reply on a review thread.
+func (a *App) ReplyToThread(repo, threadID, body string) error {
+	return ReplyToThread(repo, threadID, body)
+}
+
+// SetThreadResolved resolves a review thread, or opens it again.
+func (a *App) SetThreadResolved(repo, threadID string, resolved bool) error {
+	return SetThreadResolved(repo, threadID, resolved)
+}
+
 // ExportPatch writes the review's diff to a .patch file the user chooses. name, such as "pr-12",
 // goes into the suggested file name. It returns the saved path, or "" when the dialog was cancelled.
 func (a *App) ExportPatch(s Scope, name string) (string, error) {

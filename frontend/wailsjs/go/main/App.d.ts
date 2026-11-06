@@ -42,6 +42,8 @@ export function PRViewedStates(arg1:string,arg2:string):Promise<Record<string, s
 
 export function PrepareReview(arg1:string,arg2:main.PRInfo):Promise<main.ReviewTarget>;
 
+export function ReplyToThread(arg1:string,arg2:string,arg3:string):Promise<void>;
+
 export function ResizeTerminal(arg1:number,arg2:number):Promise<void>;
 
 export function ResolveRepo(arg1:string):Promise<string>;
@@ -54,11 +56,15 @@ export function RunCommand(arg1:string,arg2:string):Promise<main.RunResult>;
 
 export function SearchFiles(arg1:string,arg2:string,arg3:Array<string>,arg4:main.SearchQuery):Promise<main.SearchResult>;
 
+export function SetThreadResolved(arg1:string,arg2:string,arg3:boolean):Promise<void>;
+
 export function SetViewed(arg1:string,arg2:string,arg3:Array<string>,arg4:boolean):Promise<void>;
 
 export function StartTerminal(arg1:string,arg2:number,arg3:number):Promise<void>;
 
 export function StopTerminal():Promise<void>;
+
+export function SubmitReview(arg1:string,arg2:string,arg3:main.ReviewSubmission):Promise<void>;
 
 export function TakePendingRepo():Promise<main.OpenRequest>;
 
