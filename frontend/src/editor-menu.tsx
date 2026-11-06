@@ -3,12 +3,14 @@ import type {main} from '../wailsjs/go/models';
 import {Button} from './ui/button';
 
 // EditorMenu opens the file in the current editor. The arrow lists the other installed editors,
-// and picking one opens the file in it and makes it the current one.
-export function EditorMenu({editors, current, disabled, onOpen}: {
+// and picking one opens the file in it and makes it the current one. For a pull request the file
+// opens read-only at its head, and the menu adds the local working copy as a second choice.
+export function EditorMenu({editors, current, disabled, onOpen, onOpenWorkingCopy}: {
     editors: main.Editor[];
     current: string;
     disabled: boolean;
     onOpen: (id: string) => void;
+    onOpenWorkingCopy: ((id: string) => void) | null;
 }) {
     const [open, setOpen] = useState(false);
     const root = useRef<HTMLDivElement>(null);
@@ -29,7 +31,8 @@ export function EditorMenu({editors, current, disabled, onOpen}: {
 
     return (
         <div ref={root} className="relative inline-flex">
-            <Button disabled={disabled} onClick={() => onOpen(target.id)} title={`Open in ${target.name} (o)`}>
+            <Button disabled={disabled} onClick={() => onOpen(target.id)}
+                title={onOpenWorkingCopy ? `Open a read-only copy at the pull request's head in ${target.name} (o)` : `Open in ${target.name} (o)`}>
                 Open in {target.name}
             </Button>
             <Button
@@ -62,6 +65,19 @@ export function EditorMenu({editors, current, disabled, onOpen}: {
                             {e.name}
                         </button>
                     ))}
+                    {onOpenWorkingCopy && (
+                        <button
+                            role="menuitem"
+                            className="block w-full cursor-pointer rounded border-t border-[var(--border)] px-2.5 py-1.5 text-left text-[13px] hover:bg-[var(--bg-hover)]"
+                            title="Your local file, which may differ from the pull request if another branch is checked out"
+                            onClick={() => {
+                                setOpen(false);
+                                onOpenWorkingCopy(target.id);
+                            }}
+                        >
+                            Open working copy in {target.name}
+                        </button>
+                    )}
                 </div>
             )}
         </div>

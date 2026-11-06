@@ -1,12 +1,13 @@
 import {describe, expect, it} from 'vitest';
 import {diffRows, parseDiff} from './diff';
 import {
-    addDraft, checkLineTarget, focusFor, commentableLines, countText, deleteDraft, type Draft, draftCounts, editDraft, parseDrafts, removeDrafts,
-    rowTargets, toReviewDrafts, verdictBlock,
+    addDraft, checkLineTarget, type Composer, focusFor, commentableLines, countText, deleteDraft, type Draft, draftCounts, editDraft, parseDrafts, removeDrafts,
+    rowTargets, staleNote, toReviewDrafts, typedFor, verdictBlock, withoutTyped, withTyped,
 } from './drafts';
 
-const line = (id: string, path = 'a.go', n = 3): Draft => ({kind: 'line', id, path, line: n, side: 'RIGHT', body: `note ${id}`});
-const file = (id: string, path = 'a.go'): Draft => ({kind: 'file', id, path, body: `file ${id}`});
+const HEAD = 'c0ffee';
+const line = (id: string, path = 'a.go', n = 3): Draft => ({kind: 'line', id, path, line: n, side: 'RIGHT', body: `note ${id}`, head: HEAD});
+const file = (id: string, path = 'a.go'): Draft => ({kind: 'file', id, path, body: `file ${id}`, head: HEAD});
 
 describe('draft store', () => {
     it('adds, edits and deletes drafts by id', () => {
@@ -44,6 +45,11 @@ describe('draft store', () => {
         ];
         expect(parseDrafts(saved)).toEqual([line('1'), file('2')]);
         expect(parseDrafts({not: 'a list'})).toEqual([]);
+    });
+
+    it('reads a draft saved before drafts kept their head as written at an unknown head', () => {
+        const {head: _head, ...old} = line('1');
+        expect(parseDrafts([old])).toEqual([{...line('1'), head: null}]);
     });
 
     it('sends line and file drafts in the shape the backend takes', () => {
@@ -168,5 +174,51 @@ describe('countText', () => {
         expect(countText(0)).toBe('No draft comments');
         expect(countText(1)).toBe('1 draft comment will post');
         expect(countText(2)).toBe('2 draft comments will post');
+    });
+});
+
+describe('typed text of an open editor', () => {
+    const onLine: Composer = {kind: 'line', path: 'a.go', side: 'RIGHT', line: 3};
+    const editing: Composer = {kind: 'edit', id: '1'};
+
+    it('comes back for the same place after the editor was drawn again', () => {
+        const typing = withTyped({}, {composer: onLine, body: 'half a thought'});
+        expect(typedFor(typing, {composer: {...onLine}, saved: ''})).toBe('half a thought');
+        expect(typedFor(typing, {composer: {...onLine, line: 4}, saved: ''})).toBe('');
+        expect(typedFor(typing, {composer: {...onLine, side: 'LEFT'}, saved: ''})).toBe('');
+        expect(typedFor(typing, {composer: {kind: 'file', path: 'a.go'}, saved: ''})).toBe('');
+    });
+
+    it('starts an edit from the saved draft until something is typed', () => {
+        expect(typedFor({}, {composer: editing, saved: 'saved words'})).toBe('saved words');
+        const typing = withTyped({}, {composer: editing, body: 'new words'});
+        expect(typedFor(typing, {composer: editing, saved: 'saved words'})).toBe('new words');
+        expect(typedFor(typing, {composer: {kind: 'edit', id: '2'}, saved: 'other'})).toBe('other');
+    });
+
+    it('is forgotten once the editor is saved or cancelled', () => {
+        const typing = withTyped(withTyped({}, {composer: onLine, body: 'a'}), {composer: editing, body: 'b'});
+        const left = withoutTyped(typing, onLine);
+        expect(typedFor(left, {composer: onLine, saved: ''})).toBe('');
+        expect(typedFor(left, {composer: editing, saved: ''})).toBe('b');
+    });
+});
+
+describe('staleNote', () => {
+    it('names the line drafts written before the latest push', () => {
+        const drafts = [line('1', 'a.go', 12), {...line('2', 'b.go', 3), head: 'old'}, {...file('3', 'c.go'), head: 'old'}, {...line('4', 'd.go', 9), head: 'older'}];
+        expect(staleNote(drafts, HEAD)).toBe(
+            '2 draft comments were written before the latest push, and their lines may have moved: b.go line 3, d.go line 9. Edit or delete them, then submit again.',
+        );
+    });
+
+    it('says nothing when every line draft was written at this head, or its head is unknown', () => {
+        expect(staleNote([line('1'), {...line('2'), head: null}, {...file('3'), head: 'old'}], HEAD)).toBeNull();
+    });
+
+    it('reads in the singular for one draft', () => {
+        expect(staleNote([{...line('1', 'a.go', 7), head: 'old'}], HEAD)).toBe(
+            '1 draft comment was written before the latest push, and its line may have moved: a.go line 7. Edit or delete it, then submit again.',
+        );
     });
 });

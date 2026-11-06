@@ -1,6 +1,7 @@
 import {type KeyboardEvent, type ReactNode, useEffect, useMemo, useRef, useState} from 'react';
 import type {main} from '../wailsjs/go/models';
-import {RunCommand} from '../wailsjs/go/main/App';
+import {PRChecks, RunCommand} from '../wailsjs/go/main/App';
+import {checkChip, checksSummary} from './checks';
 import {fuzzyScore, shellQuote} from './util';
 import {Button} from './ui/button';
 import {Kbd} from './ui/kbd';
@@ -98,10 +99,12 @@ export function CommandPalette({commands, onClose}: {commands: Command[]; onClos
 }
 
 // CommandPanel runs a command in the repository, such as a test command. A
-// {files} placeholder is replaced with the changed paths, shell-quoted.
-export function CommandPanel({repo, paths, onClose}: {
+// {files} placeholder is replaced with the changed paths, shell-quoted. For a pull request it
+// also lists the CI checks on its head.
+export function CommandPanel({repo, paths, checks, onClose}: {
     repo: string;
     paths: string[];
+    checks: {number: number; onOpenURL: (url: string) => void} | null;
     onClose: () => void;
 }) {
     const key = `git-tree-compare:cmd:${repo}`;
@@ -165,7 +168,60 @@ export function CommandPanel({repo, paths, onClose}: {
             </div>
             {status && <div className="cmd-status">{status}</div>}
             {output && <pre className="cmd-output">{output}</pre>}
+            {checks && <ChecksList repo={repo} number={checks.number} onOpenURL={checks.onOpenURL}/>}
         </section>
+    );
+}
+
+type ChecksState = {kind: 'loading'} | {kind: 'ready'; checks: main.Check[]} | {kind: 'failed'; message: string};
+
+// ChecksList shows the CI checks on a pull request's head, failing and running ones first.
+function ChecksList({repo, number, onOpenURL}: {repo: string; number: number; onOpenURL: (url: string) => void}) {
+    const [state, setState] = useState<ChecksState>({kind: 'loading'});
+    const reads = useRef(0); // drops a read that a later refresh overtook
+
+    async function load() {
+        const read = ++reads.current;
+        setState({kind: 'loading'});
+        try {
+            const checks = await PRChecks(repo, number);
+            if (read === reads.current) setState({kind: 'ready', checks});
+        } catch (e) {
+            if (read === reads.current) setState({kind: 'failed', message: String(e)});
+        }
+    }
+
+    useEffect(() => {
+        load();
+    }, [repo, number]);
+
+    return (
+        <div className="checks" aria-label="Checks">
+            <div className="checks-head">
+                <span>Checks</span>
+                <span className="cmd-status">
+                    {state.kind === 'loading' ? 'Reading checks…' : state.kind === 'ready' ? checksSummary(state.checks) : 'Could not read the checks'}
+                </span>
+                <span className="spacer"/>
+                <Button onClick={load} disabled={state.kind === 'loading'} title="Read the checks from GitHub again">Refresh</Button>
+            </div>
+            {state.kind === 'failed' && <div className="cmd-status" role="alert">{state.message}</div>}
+            {state.kind === 'ready' && state.checks.length > 0 && (
+                <ul className="checks-list">
+                    {state.checks.map((c, i) => {
+                        const chip = checkChip(c);
+                        return (
+                            <li key={`${c.name}-${i}`}>
+                                <span className={`chip check-${chip.kind}`}>{chip.label}</span>
+                                {c.link
+                                    ? <Button variant="link" onClick={() => onOpenURL(c.link)} title="Open this check on GitHub">{c.name}</Button>
+                                    : <span>{c.name}</span>}
+                            </li>
+                        );
+                    })}
+                </ul>
+            )}
+        </div>
     );
 }
 
@@ -368,13 +424,14 @@ export interface FileMenuProps {
     paths: string[]; // the files the actions apply to
     allReviewed: boolean;
     onOpenInEditor: (path: string) => void;
+    onOpenWorkingCopy: ((path: string) => void) | null; // set for a pull request, whose files open at its head
     onCopyPaths: () => void;
     onToggleReviewed: () => void;
     onClose: () => void;
 }
 
 // FileMenu is the right-click menu for files in the tree. It acts on every file in paths.
-export function FileMenu({x, y, paths, allReviewed, onOpenInEditor, onCopyPaths, onToggleReviewed, onClose}: FileMenuProps) {
+export function FileMenu({x, y, paths, allReviewed, onOpenInEditor, onOpenWorkingCopy, onCopyPaths, onToggleReviewed, onClose}: FileMenuProps) {
     useEffect(() => {
         const close = (e: globalThis.KeyboardEvent) => {
             if (e.key === 'Escape') onClose();
@@ -397,6 +454,9 @@ export function FileMenu({x, y, paths, allReviewed, onOpenInEditor, onCopyPaths,
         <div className="ctx-scrim" onMouseDown={onClose} onContextMenu={e => { e.preventDefault(); onClose(); }}>
             <ul className="ctx-menu" role="menu" style={{left, top}} onMouseDown={e => e.stopPropagation()}>
                 {single && <li role="none"><button role="menuitem" onClick={() => run(() => onOpenInEditor(single))}>Open in editor</button></li>}
+                {single && onOpenWorkingCopy && (
+                    <li role="none"><button role="menuitem" onClick={() => run(() => onOpenWorkingCopy(single))}>Open working copy</button></li>
+                )}
                 <li role="none">
                     <button role="menuitem" onClick={() => run(onCopyPaths)}>
                         {paths.length > 1 ? `Copy ${paths.length} paths` : 'Copy path'}

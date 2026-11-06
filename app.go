@@ -293,6 +293,16 @@ func (a *App) OpenInEditor(repo, path, editor string) error {
 	return OpenInEditor(repo, path, editor)
 }
 
+// OpenAtHead opens a read-only copy of a pull request's file at its head commit in the editor.
+func (a *App) OpenAtHead(repo string, number int, head, path, editor string) error {
+	return OpenAtHead(repo, number, head, path, editor)
+}
+
+// PRChecks lists the CI checks on a pull request's head.
+func (a *App) PRChecks(repo string, number int) ([]Check, error) {
+	return PRChecks(repo, number)
+}
+
 // orEmpty turns a nil slice into an empty one. Go sends nil as null, and the
 // frontend maps over these lists without checking for null.
 func orEmpty[T any](items []T) []T {

@@ -15,6 +15,7 @@ import {
     InstalledEditors,
     ListLocal,
     ListPRs,
+    OpenAtHead,
     OpenInEditor,
     PRComments,
     PRViewedStates,
@@ -36,7 +37,8 @@ import {paint, type Token} from './syntax';
 import {EditorMenu} from './editor-menu';
 import {Command, CommandPalette, CommandPanel, CommentBody, CommentsPanel, FileMenu, PRDiscussion, PRThread, QuickOpen, ThreadActions, type ThreadControls, UpdateBanner} from './panels';
 import {
-    addDraft, checkLineTarget, deleteDraft, type Draft, draftCounts, editDraft, focusFor, parseDrafts, removeDrafts, rowTargets, type Side, toReviewDrafts, type Verdict,
+    addDraft, checkLineTarget, type Composer, deleteDraft, type Draft, draftCounts, editDraft, focusFor, parseDrafts, removeDrafts, rowTargets, type Side, staleNote,
+    toReviewDrafts, type Typing, typedFor, type Verdict, withoutTyped, withTyped,
 } from './drafts';
 import {type DraftControls, DraftStack, FinishSheet} from './finish';
 import {type InboxRow, type LocalWork} from './inbox';
@@ -102,8 +104,6 @@ function newDraftId(): string {
 
 // A diff line chosen with a click, where c drafts a line comment.
 type LineFocus = {path: string; side: Side; line: number};
-// What the draft editor is writing: a new comment on a line or a file, or a saved draft.
-type Composer = {kind: 'line'; path: string; side: Side; line: number} | {kind: 'file'; path: string} | {kind: 'edit'; id: string};
 
 type OpenRequest = {repo?: string; error?: string; review?: main.LocalReview; link?: main.OpenLink};
 
@@ -183,6 +183,7 @@ function App() {
     // Values read inside effects and handlers, without re-running them.
     const recordRef = useRef<ReviewRecord>(emptyRecord);
     const draftsRef = useRef<{key: string; drafts: Draft[]} | null>(null); // the open review's drafts, and where they are saved
+    const typing = useRef<Typing>({}); // what draft editors hold, kept while their diff row is scrolled away
     const owner = useRef<{repo: string; id: string; key: string} | null>(null); // whose review recordRef holds
     const flushing = useRef(false); // one writer to GitHub at a time, so toggles land in order
     const writes = useRef(0); // counts accepted writes, to drop reads that started before them
@@ -359,12 +360,13 @@ function App() {
         const key = draftsRef.current?.key;
         if (!key || !composer) return;
         const c = composer;
+        const head = commits?.head ?? null;
         switch (c.kind) {
             case 'line':
-                changeDrafts(key, d => addDraft(d, {kind: 'line', id: newDraftId(), path: c.path, line: c.line, side: c.side, body}));
+                changeDrafts(key, d => addDraft(d, {kind: 'line', id: newDraftId(), path: c.path, line: c.line, side: c.side, body, head}));
                 break;
             case 'file':
-                changeDrafts(key, d => addDraft(d, {kind: 'file', id: newDraftId(), path: c.path, body}));
+                changeDrafts(key, d => addDraft(d, {kind: 'file', id: newDraftId(), path: c.path, body, head}));
                 break;
             case 'edit':
                 changeDrafts(key, d => editDraft(d, {id: c.id, body}));
@@ -374,12 +376,19 @@ function App() {
                 return _exhaustive;
             }
         }
+        closeComposer();
+    }
+
+    // Closes the draft editor and forgets what it held.
+    function closeComposer() {
+        if (composer) typing.current = withoutTyped(typing.current, composer);
         setComposer(null);
     }
 
     function removeDraft(id: string) {
         const key = draftsRef.current?.key;
         if (key) changeDrafts(key, d => deleteDraft(d, id));
+        typing.current = withoutTyped(typing.current, {kind: 'edit', id});
         setComposer(c => (c?.kind === 'edit' && c.id === id ? null : c));
     }
 
@@ -388,7 +397,7 @@ function App() {
         const key = draftsRef.current?.key;
         const note = notes[path]?.trim();
         if (!key || !note) return;
-        changeDrafts(key, d => addDraft(d, {kind: 'file', id: newDraftId(), path, body: note}));
+        changeDrafts(key, d => addDraft(d, {kind: 'file', id: newDraftId(), path, body: note, head: commits?.head ?? null}));
         updateNote(path, '');
         setNoteOpen(false);
         showFlash(pr ? 'The note is now a draft comment. It posts when you finish.' : 'The note is now a draft comment.');
@@ -422,15 +431,23 @@ function App() {
     }
 
     // The diff view is memoised, so it gets stable controls that call the latest handlers.
-    const latest = useRef({replyToThread, resolveThread, saveComposer, removeDraft, selectedPath: selected?.path});
-    latest.current = {replyToThread, resolveThread, saveComposer, removeDraft, selectedPath: selected?.path};
+    const latest = useRef({replyToThread, resolveThread, saveComposer, closeComposer, removeDraft, composer, selectedPath: selected?.path});
+    latest.current = {replyToThread, resolveThread, saveComposer, closeComposer, removeDraft, composer, selectedPath: selected?.path};
     const threadControls = useMemo<ThreadControls>(() => ({
         reply: (id, body) => latest.current.replyToThread(id, body),
         resolve: (id, resolved) => latest.current.resolveThread(id, resolved),
     }), []);
     const draftControls = useMemo<DraftControls>(() => ({
         save: body => latest.current.saveComposer(body),
-        cancel: () => setComposer(null),
+        cancel: () => latest.current.closeComposer(),
+        typed: saved => {
+            const c = latest.current.composer;
+            return c ? typedFor(typing.current, {composer: c, saved}) : saved;
+        },
+        type: body => {
+            const c = latest.current.composer;
+            if (c) typing.current = withTyped(typing.current, {composer: c, body});
+        },
         edit: id => setComposer({kind: 'edit', id}),
         remove: id => latest.current.removeDraft(id),
     }), []);
@@ -683,6 +700,7 @@ function App() {
         const savedDrafts = next ? {key: draftsKeyOf(next.key), drafts: parseDrafts(readStore<unknown>(draftsKeyOf(next.key), null))} : null;
         draftsRef.current = savedDrafts;
         setDrafts(savedDrafts?.drafts ?? []);
+        typing.current = {};
         setComposer(null);
         setFocusLine(null);
         setSummary('');
@@ -1057,12 +1075,23 @@ function App() {
     // The editor used by the main button, and by the o key: the saved choice if it is still installed.
     const defaultEditor = editors.find(e => e.id === editorID)?.id ?? editors[0]?.id ?? '';
 
+    // A pull request's file opens as a read-only copy at its head, so the editor shows what the diff
+    // shows whatever is checked out. A commit or branch opens the working copy.
     async function openIn(id: string, path = selected?.path) {
+        await openFile({id, path, at: pr && commits ? {number: pr.number, head: commits.head} : null});
+    }
+
+    async function openWorkingCopy(id: string, path = selected?.path) {
+        await openFile({id, path, at: null});
+    }
+
+    async function openFile({id, path, at}: {id: string; path: string | undefined; at: {number: number; head: string} | null}) {
         if (!path) return;
         const name = editors.find(e => e.id === id)?.name ?? id;
         setEditorID(id);
         try {
-            await OpenInEditor(repo, path, id);
+            if (at) await OpenAtHead(repo, at.number, at.head, path, id);
+            else await OpenInEditor(repo, path, id);
         } catch (e) {
             setError(`Could not open ${name}: ${e}`);
         }
@@ -1185,6 +1214,7 @@ function App() {
                     onClose={() => setFinishOpen(false)}
                     mode={pr ? {
                         kind: 'pr', isMine: pr.isMine, verdict, body: summary, onVerdict: setVerdict, onBody: setSummary, onSubmit: submitReview,
+                        staleNote: commits ? staleNote(drafts, commits.head) : null,
                     } : {
                         kind: 'local',
                         onCopySummary: () => {
@@ -1203,6 +1233,7 @@ function App() {
                     paths={menuPaths}
                     allReviewed={menuAllReviewed}
                     onOpenInEditor={path => openIn(defaultEditor, path)}
+                    onOpenWorkingCopy={pr ? path => openWorkingCopy(defaultEditor, path) : null}
                     onCopyPaths={copyMenuPaths}
                     onToggleReviewed={() => toggleFiles(menuPaths)}
                     onClose={() => setMenu(null)}
@@ -1424,6 +1455,7 @@ function App() {
                                 <CommandPanel
                                     repo={repo}
                                     paths={visibleChanges.map(c => c.path)}
+                                    checks={pr ? {number: pr.number, onOpenURL: BrowserOpenURL} : null}
                                     onClose={() => setCmdOpen(false)}
                                 />
                             )}
@@ -1449,6 +1481,7 @@ function App() {
                                     editors={editors}
                                     defaultEditor={defaultEditor}
                                     onOpenIn={openIn}
+                                    onOpenWorkingCopy={pr ? openWorkingCopy : null}
                                     prFileURL={prFileURL}
                                     threads={fileThreads}
                                     onOpenURL={BrowserOpenURL}
@@ -1653,6 +1686,7 @@ function DiffPanel(props: {
     editors: main.Editor[];
     defaultEditor: string;
     onOpenIn: (id: string) => void;
+    onOpenWorkingCopy: ((id: string) => void) | null; // a pull request opens at its head; this opens the local file
     prFileURL: string;
     threads: PRThread[];
     onOpenURL: (url: string) => void;
@@ -1714,7 +1748,8 @@ function DiffPanel(props: {
                 {props.prFileURL && (
                     <Button onClick={() => props.onOpenURL(props.prFileURL)} title="Open this file's diff on the pull request">Open on GitHub</Button>
                 )}
-                <EditorMenu editors={props.editors} current={props.defaultEditor} disabled={file.status === 'D'} onOpen={props.onOpenIn}/>
+                <EditorMenu editors={props.editors} current={props.defaultEditor} disabled={file.status === 'D'} onOpen={props.onOpenIn}
+                    onOpenWorkingCopy={props.onOpenWorkingCopy}/>
             </div>
             {props.diffNote && <div className="diff-note" role="status">{props.diffNote}</div>}
             {noteOpen && (
@@ -2090,7 +2125,7 @@ const SHORTCUT_GROUPS: {title: string; rows: [string, string][]}[] = [
         ['/', 'Filter'],
         ['⌘P', 'Go to file'],
         ['⇧⌘F', 'Search in the changed files'],
-        ['o', 'Open file in the default editor'],
+        ['o', 'Open file in the default editor (read-only at the head for a pull request)'],
         ['g', 'Group files by state, or show them by folder'],
     ]},
     {title: 'Reviewing', rows: [
@@ -2110,7 +2145,7 @@ const SHORTCUT_GROUPS: {title: string; rows: [string, string][]}[] = [
     ]},
     {title: 'App', rows: [
         ['⌘K', 'All commands'],
-        ['t', 'Run a command'],
+        ['t', 'Run a command, and see the pull request\'s checks'],
         ['r', 'Refresh'],
         ['?', 'Show or hide this list'],
     ]},

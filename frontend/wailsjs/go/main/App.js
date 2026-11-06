@@ -66,8 +66,16 @@ export function ListRefs(arg1) {
   return window['go']['main']['App']['ListRefs'](arg1);
 }
 
+export function OpenAtHead(arg1, arg2, arg3, arg4, arg5) {
+  return window['go']['main']['App']['OpenAtHead'](arg1, arg2, arg3, arg4, arg5);
+}
+
 export function OpenInEditor(arg1, arg2, arg3) {
   return window['go']['main']['App']['OpenInEditor'](arg1, arg2, arg3);
+}
+
+export function PRChecks(arg1, arg2) {
+  return window['go']['main']['App']['PRChecks'](arg1, arg2);
 }
 
 export function PRComments(arg1, arg2) {

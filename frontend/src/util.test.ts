@@ -44,9 +44,9 @@ describe('buildMarkdown', () => {
             reviewed: {'a.go': 'reviewed'},
             notes: {'a.go': 'looks fine'},
             drafts: [
-                {kind: 'line', id: '1', path: 'a.go', line: 12, side: 'RIGHT', body: 'rename this'},
-                {kind: 'line', id: '2', path: 'a.go', line: 3, side: 'LEFT', body: 'why remove?\nit was used'},
-                {kind: 'file', id: '3', path: 'b.go', body: 'split this file'},
+                {kind: 'line', id: '1', path: 'a.go', line: 12, side: 'RIGHT', body: 'rename this', head: null},
+                {kind: 'line', id: '2', path: 'a.go', line: 3, side: 'LEFT', body: 'why remove?\nit was used', head: null},
+                {kind: 'file', id: '3', path: 'b.go', body: 'split this file', head: null},
             ],
         });
         expect(md).toBe([

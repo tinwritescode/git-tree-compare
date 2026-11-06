@@ -1,5 +1,23 @@
 export namespace main {
 	
+	export class Check {
+	    name: string;
+	    state: string;
+	    link: string;
+	    bucket: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Check(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.state = source["state"];
+	        this.link = source["link"];
+	        this.bucket = source["bucket"];
+	    }
+	}
 	export class CommitRef {
 	    hash: string;
 	    short: string;

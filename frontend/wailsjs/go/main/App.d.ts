@@ -34,7 +34,11 @@ export function ListPRs(arg1:string):Promise<Array<main.PRInfo>>;
 
 export function ListRefs(arg1:string):Promise<main.RefList>;
 
+export function OpenAtHead(arg1:string,arg2:number,arg3:string,arg4:string,arg5:string):Promise<void>;
+
 export function OpenInEditor(arg1:string,arg2:string,arg3:string):Promise<void>;
+
+export function PRChecks(arg1:string,arg2:number):Promise<Array<main.Check>>;
 
 export function PRComments(arg1:string,arg2:string):Promise<main.PRDiscussion>;
 

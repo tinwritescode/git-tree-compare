@@ -5,15 +5,22 @@ import {countText, type Draft, type Verdict, verdictBlock} from './drafts';
 import {Button} from './ui/button';
 import {Kbd} from './ui/kbd';
 
-// DraftEditor writes or edits one draft comment. ⌘↵ saves, Esc cancels.
-export function DraftEditor({initial, label, placeholder, onSave, onCancel}: {
-    initial: string;
+// DraftEditor writes or edits one draft comment. ⌘↵ saves, Esc cancels. It starts from typed, the
+// text it held before its row scrolled away, and reports each change with onType.
+export function DraftEditor({initial, typed, label, placeholder, onType, onSave, onCancel}: {
+    initial: string; // the saved draft's text, or empty for a new one
+    typed: string;
     label: string;
     placeholder: string;
+    onType: (body: string) => void;
     onSave: (body: string) => void;
     onCancel: () => void;
 }) {
-    const [body, setBody] = useState(initial);
+    const [body, setBody] = useState(typed);
+    function change(next: string) {
+        setBody(next);
+        onType(next);
+    }
     function onKey(e: KeyboardEvent) {
         if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
             e.preventDefault();
@@ -23,7 +30,7 @@ export function DraftEditor({initial, label, placeholder, onSave, onCancel}: {
     }
     return (
         <div className="draft draft-editor">
-            <textarea autoFocus value={body} placeholder={placeholder} onChange={e => setBody(e.target.value)} onKeyDown={onKey}/>
+            <textarea autoFocus value={body} placeholder={placeholder} onChange={e => change(e.target.value)} onKeyDown={onKey}/>
             <div className="draft-actions">
                 <span className="draft-label">{label}</span>
                 <span className="spacer"/>
@@ -56,7 +63,7 @@ export function DraftCard({draft, label, onEdit, onDelete}: {
 
 export type FinishMode =
     | {kind: 'pr'; isMine: boolean; verdict: Verdict; body: string; onVerdict: (v: Verdict) => void; onBody: (body: string) => void;
-        onSubmit: () => Promise<void>}
+        onSubmit: () => Promise<void>; staleNote: string | null} // staleNote names drafts written before the latest push
     | {kind: 'local'; onCopySummary: () => void; onExportPatch: () => void};
 
 const VERDICTS: {verdict: Verdict; label: string; hint: string}[] = [
@@ -131,6 +138,7 @@ export function FinishSheet({mode, drafts, onClose}: {mode: FinishMode; drafts: 
                         <div className="finish-count">{countText(drafts)}</div>
                         {blocked && <div className="finish-note" role="status">{blocked}</div>}
                         {failure && <div className="finish-error" role="alert">Nothing was posted. {failure}</div>}
+                        {failure && mode.staleNote && <div className="finish-note" role="status">{mode.staleNote}</div>}
                         <div className="finish-actions">
                             <span className="spacer"/>
                             <Button onClick={onClose} disabled={submitting}>Keep reviewing</Button>
@@ -161,6 +169,8 @@ export function FinishSheet({mode, drafts, onClose}: {mode: FinishMode; drafts: 
 export type DraftControls = {
     save: (body: string) => void; // what the open editor holds
     cancel: () => void;
+    typed: (saved: string) => string; // what the open editor held, else saved
+    type: (body: string) => void; // the open editor's text changed
     edit: (id: string) => void;
     remove: (id: string) => void;
 };
@@ -178,9 +188,11 @@ export function DraftStack({drafts, editing, adding, label, placeholder, control
     return (
         <div className="draft-stack">
             {drafts.map(d => (d.id === editing
-                ? <DraftEditor key={d.id} initial={d.body} label={label} placeholder={placeholder} onSave={controls.save} onCancel={controls.cancel}/>
+                ? <DraftEditor key={d.id} initial={d.body} typed={controls.typed(d.body)} label={label} placeholder={placeholder}
+                    onType={controls.type} onSave={controls.save} onCancel={controls.cancel}/>
                 : <DraftCard key={d.id} draft={d} label={label} onEdit={() => controls.edit(d.id)} onDelete={() => controls.remove(d.id)}/>))}
-            {adding && <DraftEditor initial="" label={label} placeholder={placeholder} onSave={controls.save} onCancel={controls.cancel}/>}
+            {adding && <DraftEditor initial="" typed={controls.typed('')} label={label} placeholder={placeholder}
+                onType={controls.type} onSave={controls.save} onCancel={controls.cancel}/>}
         </div>
     );
 }

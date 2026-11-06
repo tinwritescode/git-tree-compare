@@ -45,15 +45,28 @@ func installedEditors(editors []Editor, dirs []string) []Editor {
 
 // OpenInEditor opens a file of the repository in the editor with the given ID.
 func OpenInEditor(repo, rel, id string) error {
-	for _, e := range knownEditors {
-		if e.ID != id {
-			continue
-		}
-		full, err := safeFilePath(repo, rel)
-		if err != nil {
-			return err
-		}
-		return exec.Command("open", "-a", e.App, full).Run()
+	app, err := editorApp(id)
+	if err != nil {
+		return err
 	}
-	return fmt.Errorf("unknown editor %q", id)
+	full, err := safeFilePath(repo, rel)
+	if err != nil {
+		return err
+	}
+	return openWith(app, full)
+}
+
+// editorApp is the app bundle name of the editor with the given ID.
+func editorApp(id string) (string, error) {
+	for _, e := range knownEditors {
+		if e.ID == id {
+			return e.App, nil
+		}
+	}
+	return "", fmt.Errorf("unknown editor %q", id)
+}
+
+// openWith opens path in the macOS app named app.
+func openWith(app, path string) error {
+	return exec.Command("open", "-a", app, path).Run()
 }

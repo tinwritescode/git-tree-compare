@@ -1012,6 +1012,40 @@ button:disabled {
     opacity: 0.8;
 }
 
+.checks {
+    margin-top: 8px;
+}
+
+.checks-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.checks-head .cmd-status {
+    margin-top: 0;
+}
+
+.checks-list {
+    margin: 4px 0 0;
+    padding: 0;
+    max-height: 200px;
+    overflow: auto;
+    list-style: none;
+    font-size: 13px;
+}
+
+.checks-list li {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 2px 0;
+}
+
+.chip.check-pass { color: var(--add); background: var(--add-bg); }
+.chip.check-fail { color: var(--del); background: var(--del-bg); }
+.chip.check-pending { color: var(--warn-text); background: var(--warn-bg); }
+
 .cmd-output {
     margin: 6px 0 0;
     max-height: 240px;

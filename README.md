@@ -19,7 +19,7 @@ Created by **Tin Nguyen**.
 - Viewed state comes from GitHub, and files changed since you viewed them are flagged
 - Review threads inline in the diff, with reply and resolve, and notes per file
 - Draft comments on lines and files, then finish the review with a verdict in one go
-- Run a command (such as tests) against the changed files
+- Run a command (such as tests) against the changed files, and see a pull request's CI checks
 - Embedded terminal in the repository, toggled with `` Ctrl+` ``
 - Export a Markdown summary or a `.patch` file
 
@@ -98,7 +98,8 @@ Press `g`, or the button beside the file filter, to switch between the folder tr
 
 ### Right-click a file
 
-- **Open in editor** opens your local copy of the file, which may differ from the pull request if another branch is checked out.
+- **Open in editor** opens the file. For a pull request it opens a read-only copy of the file at the pull request's head, so it matches the diff whatever branch is checked out. For a commit or branch it opens your local copy.
+- **Open working copy** (pull requests only) opens your local copy instead, which may differ from the pull request if another branch is checked out. The arrow beside the editor button offers it too.
 - **Copy path** copies the path, or all selected paths.
 - **Mark reviewed** marks the file, or the whole selection, as reviewed.
 
@@ -145,9 +146,9 @@ Press `?` in the app to see this list.
 | `s` | Whole pull request, or only the changes since your review (files a push changed after you reviewed them) |
 | `n` | Note for the file |
 | `⇧C` | Comments |
-| `o` | Open the file in your editor |
+| `o` | Open the file in your editor (read-only at the head for a pull request) |
 | `g` | Group files by state, or show them by folder |
-| `t` | Run a command |
+| `t` | Run a command, and see the pull request's checks |
 | `r` | Refresh |
 | `` Ctrl+` `` | Show or hide the terminal |
 | `?` | Show or hide the shortcut list |

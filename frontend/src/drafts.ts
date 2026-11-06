@@ -5,9 +5,10 @@ import type {main} from '../wailsjs/go/models';
 import type {DiffRow, Line} from './diff';
 
 export type Side = 'RIGHT' | 'LEFT'; // RIGHT is the head, LEFT the base
+// head is the commit the draft was written against; null for drafts saved before it was kept.
 export type Draft =
-    | {kind: 'line'; id: string; path: string; line: number; side: Side; body: string}
-    | {kind: 'file'; id: string; path: string; body: string};
+    | {kind: 'line'; id: string; path: string; line: number; side: Side; body: string; head: string | null}
+    | {kind: 'file'; id: string; path: string; body: string; head: string | null};
 
 export function addDraft(drafts: Draft[], draft: Draft): Draft[] {
     return draft.body.trim() ? [...drafts, draft] : drafts;
@@ -50,11 +51,13 @@ function parseDraft(v: unknown): Draft | null {
     const path = field(v, 'path');
     const body = field(v, 'body');
     if (typeof id !== 'string' || typeof path !== 'string' || !path || typeof body !== 'string' || !body.trim()) return null;
-    if (kind === 'file') return {kind, id, path, body};
+    const saved = field(v, 'head');
+    const head = typeof saved === 'string' && saved ? saved : null;
+    if (kind === 'file') return {kind, id, path, body, head};
     const line = field(v, 'line');
     const side = field(v, 'side');
     if (kind !== 'line' || typeof line !== 'number' || !Number.isInteger(line) || line < 1 || (side !== 'RIGHT' && side !== 'LEFT')) return null;
-    return {kind, id, path, line, side, body};
+    return {kind, id, path, line, side, body, head};
 }
 
 function field(v: object, key: string): unknown {
@@ -75,6 +78,52 @@ export function toReviewDrafts(drafts: Draft[]): main.ReviewDraft[] {
             }
         }
     });
+}
+
+// staleNote names the line drafts written against an older head, for when GitHub refuses a
+// review: a push since may have moved their lines. A draft whose head is unknown is not named.
+export function staleNote(drafts: Draft[], head: string): string | null {
+    const stale = drafts.flatMap(d => (d.kind === 'line' && d.head !== null && d.head !== head ? [`${d.path} line ${d.line}`] : []));
+    if (!stale.length) return null;
+    const one = stale.length === 1;
+    return `${stale.length} draft comment${one ? ' was' : 's were'} written before the latest push, and ${one ? 'its line' : 'their lines'} may have moved: `
+        + `${stale.join(', ')}. Edit or delete ${one ? 'it' : 'them'}, then submit again.`;
+}
+
+// What the draft editor is writing: a new comment on a line or a file, or a saved draft.
+export type Composer = {kind: 'line'; path: string; side: Side; line: number} | {kind: 'file'; path: string} | {kind: 'edit'; id: string};
+
+// Typing is the text typed into draft editors that are not saved yet, by what each is writing. It
+// outlives the editor, which goes away when its diff row scrolls out of view.
+export type Typing = Readonly<Record<string, string>>;
+
+function composerKey(c: Composer): string {
+    switch (c.kind) {
+        case 'line':
+            return JSON.stringify([c.kind, c.path, c.side, c.line]);
+        case 'file':
+            return JSON.stringify([c.kind, c.path]);
+        case 'edit':
+            return JSON.stringify([c.kind, c.id]);
+        default: {
+            const _exhaustive: never = c;
+            return _exhaustive;
+        }
+    }
+}
+
+// typedFor is what an editor for composer starts with: what was typed into it, else the saved text.
+export function typedFor(typing: Typing, {composer, saved}: {composer: Composer; saved: string}): string {
+    return typing[composerKey(composer)] ?? saved;
+}
+
+export function withTyped(typing: Typing, {composer, body}: {composer: Composer; body: string}): Typing {
+    return {...typing, [composerKey(composer)]: body};
+}
+
+export function withoutTyped(typing: Typing, composer: Composer): Typing {
+    const {[composerKey(composer)]: _gone, ...rest} = typing;
+    return rest;
 }
 
 // GitHub's diff shows three lines of context around each change; only those lines take a comment.
