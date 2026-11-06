@@ -11,6 +11,13 @@
     "email": "tin@secondtalent.com"
   },
   "info": {
-    "productVersion": "0.6.1"
+    "productVersion": "0.6.1",
+    "protocols": [
+      {
+        "scheme": "git-tree-compare",
+        "description": "Open a pull request in git-tree-compare",
+        "role": "Viewer"
+      }
+    ]
   }
 }

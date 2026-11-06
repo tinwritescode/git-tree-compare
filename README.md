@@ -49,6 +49,8 @@ git-tree-compare /path/to/repo
 
 A second launch with a path hands the repository to the running window.
 
+A link of the form `git-tree-compare://open?repo=owner/name&pr=N` opens that pull request. The app looks for the clone among your recent repositories and the folders beside them. If it finds none, open the clone once from the app and use the link again.
+
 To install the `git-tree-compare` command, press `⌘K` in the app and choose **Install 'git-tree-compare' command in PATH**. The app writes it to the first of `~/.local/bin`, `/usr/local/bin` or `/opt/homebrew/bin` that your shell's `PATH` lists, and keeps it up to date after each app update.
 
 ### Pick a pull request

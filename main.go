@@ -32,7 +32,8 @@ func main() {
 		// and the traffic-light buttons float over it.
 		WindowStartState: options.Maximised,
 		Mac: &mac.Options{
-			TitleBar: mac.TitleBarHiddenInset(),
+			TitleBar:  mac.TitleBarHiddenInset(),
+			OnUrlOpen: app.onURL,
 		},
 		AssetServer: &assetserver.Options{
 			Assets: assets,

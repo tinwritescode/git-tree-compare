@@ -18,11 +18,13 @@ const (
 )
 
 // OpenRequest asks the frontend to show a repository, or reports why it could not.
-// Review is set when the command line asked for a commit or a branch.
+// Review is set when the command line asked for a commit or a branch. Link is set instead of Repo
+// when a URL asked for a pull request: only the frontend knows which repositories were opened before.
 type OpenRequest struct {
 	Repo   string       `json:"repo"`
 	Error  string       `json:"error"`
 	Review *LocalReview `json:"review,omitempty"`
+	Link   *OpenLink    `json:"link,omitempty"`
 }
 
 // App struct
@@ -59,7 +61,23 @@ func (a *App) requestOpen(l Launch) {
 	} else {
 		req.Repo = root
 	}
+	a.publish(req)
+}
 
+// onURL handles a git-tree-compare:// link, which macOS delivers to the running app or starts it with.
+func (a *App) onURL(raw string) {
+	link, err := parseOpenURL(raw)
+	if err != nil {
+		a.publish(OpenRequest{Error: err.Error()})
+	} else {
+		a.publish(OpenRequest{Link: &link})
+	}
+	if a.ctx != nil {
+		a.showWindow()
+	}
+}
+
+func (a *App) publish(req OpenRequest) {
 	a.mu.Lock()
 	a.pending = &req
 	a.mu.Unlock()
@@ -80,6 +98,10 @@ func (a *App) onSecondInstance(data options.SecondInstanceData) {
 	if l := parseLaunchArgs(data.Args); l.Path != "" {
 		a.requestOpen(l)
 	}
+	a.showWindow()
+}
+
+func (a *App) showWindow() {
 	runtime.WindowUnminimise(a.ctx)
 	runtime.WindowShow(a.ctx)
 }
@@ -107,6 +129,11 @@ func (a *App) ListDir(path string) (DirListing, error) {
 // ResolveRepo returns the repository root that contains path.
 func (a *App) ResolveRepo(path string) (string, error) {
 	return ResolveRepo(path)
+}
+
+// FindClone returns the local repository with a remote at slug, or "".
+func (a *App) FindClone(slug string, known []string) string {
+	return FindClone(slug, known)
 }
 
 // ListPRs returns the repository's open pull requests.

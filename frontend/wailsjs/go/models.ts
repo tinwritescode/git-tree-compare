@@ -126,10 +126,25 @@ export namespace main {
 	        this.head = source["head"];
 	    }
 	}
+	export class OpenLink {
+	    slug: string;
+	    pr: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new OpenLink(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.slug = source["slug"];
+	        this.pr = source["pr"];
+	    }
+	}
 	export class OpenRequest {
 	    repo: string;
 	    error: string;
 	    review?: LocalReview;
+	    link?: OpenLink;
 	
 	    static createFrom(source: any = {}) {
 	        return new OpenRequest(source);
@@ -140,6 +155,7 @@ export namespace main {
 	        this.repo = source["repo"];
 	        this.error = source["error"];
 	        this.review = this.convertValues(source["review"], LocalReview);
+	        this.link = this.convertValues(source["link"], OpenLink);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

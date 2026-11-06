@@ -5,6 +5,7 @@ import {
     Changes,
     CheckUpdate,
     CurrentPRNumber,
+    FindClone,
     Diff,
     DiffAnchor,
     ExportPatch,
@@ -71,7 +72,7 @@ function writeStore(key: string, value: unknown) {
 const reviewKey = (repo: string, number: number) => `git-tree-compare:review:${repo}#${number}`;
 const localReviewKey = (repo: string, r: main.LocalReview) => `git-tree-compare:review:${repo}@${r.base}..${r.head}`;
 
-type OpenRequest = {repo?: string; error?: string; review?: main.LocalReview};
+type OpenRequest = {repo?: string; error?: string; review?: main.LocalReview; link?: main.OpenLink};
 
 // What is under review: an open pull request, or a commit or branch read from git alone.
 type Subject = {kind: 'pr'; number: number} | {kind: 'local'; review: main.LocalReview};
@@ -84,7 +85,8 @@ function App() {
     const [prsError, setPrsError] = useState('');
     const [prsRead, setPrsRead] = useState(false); // the list has been read from GitHub for this repository
     const [subject, setSubject] = useState<Subject | null>(null);
-    const [launch, setLaunch] = useState<{review: main.LocalReview} | null>(null); // a review the command line asked for
+    // A review the command line or a link asked for.
+    const [launch, setLaunch] = useState<{kind: 'local'; review: main.LocalReview} | {kind: 'pr'; number: number} | null>(null);
     const [refMode, setRefMode] = useState<RefMode | null>(null); // the commit or branch picker, while open
     const [target, setTarget] = useState<main.ReviewTarget | null>(null);
     const [pollTick, setPollTick] = useState(0);
@@ -267,8 +269,23 @@ function App() {
         if (termOpen) setTermStarted(true);
     }, [termOpen]);
 
-    // Requests from the command line: first launch (pending) and later launches (event).
+    // Requests from the command line or a link: first launch (pending) and later launches (event).
     useEffect(() => {
+        function openLink({slug, pr: number}: main.OpenLink) {
+            FindClone(slug, readStore<string[]>(RECENT_KEY, []))
+                .then(found => {
+                    if (!found) {
+                        setPickError(`No clone of ${slug} found near your recent repositories. Open it here once, then use the link again.`);
+                        setPicking(true);
+                        return;
+                    }
+                    setRepo(found);
+                    setLanding(false);
+                    setPicking(false);
+                    setLaunch({kind: 'pr', number});
+                })
+                .catch(e => setError(String(e)));
+        }
         function apply(req: OpenRequest | null) {
             if (!req) return;
             if (req.error) setError(req.error);
@@ -276,7 +293,8 @@ function App() {
                 setRepo(req.repo);
                 setLanding(false);
             }
-            if (req.review) setLaunch({review: req.review});
+            if (req.review) setLaunch({kind: 'local', review: req.review});
+            if (req.link) openLink(req.link);
         }
         TakePendingRepo().then(apply).catch(() => {});
         const off = EventsOn('repo:open', (req: OpenRequest) => apply(req));
@@ -355,10 +373,16 @@ function App() {
         };
     }, [repo]);
 
-    // Opens a commit or branch. It runs after the per-repo reset above, so a request that also
-    // switched the repository is not wiped by it.
+    // Opens a commit, branch or pull request. It runs after the per-repo reset above, so a request
+    // that also switched the repository is not wiped by it.
     useEffect(() => {
-        if (launch) openLocal(launch.review);
+        if (!launch) return;
+        if (launch.kind === 'local') {
+            openLocal(launch.review);
+            return;
+        }
+        closeReview();
+        setSubject({kind: 'pr', number: launch.number});
     }, [launch]);
 
     function openLocal(review: main.LocalReview) {

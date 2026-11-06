@@ -26,6 +26,10 @@ export function ExportPatch(arg1, arg2) {
   return window['go']['main']['App']['ExportPatch'](arg1, arg2);
 }
 
+export function FindClone(arg1, arg2) {
+  return window['go']['main']['App']['FindClone'](arg1, arg2);
+}
+
 export function HomeDir() {
   return window['go']['main']['App']['HomeDir']();
 }

@@ -145,6 +145,15 @@ func remoteForPR(remotes, prURL string) string {
 	if !found {
 		return "origin"
 	}
+	if name, ok := remoteMatching(remotes, slug); ok {
+		return name
+	}
+	return "origin"
+}
+
+// remoteMatching returns the first remote whose URL ends in slug, such as owner/name.
+// remotes is `git remote -v` output.
+func remoteMatching(remotes, slug string) (string, bool) {
 	for _, line := range splitLines(remotes) {
 		name, rest, ok := strings.Cut(line, "\t")
 		if !ok {
@@ -153,10 +162,10 @@ func remoteForPR(remotes, prURL string) string {
 		url, _, _ := strings.Cut(rest, " ")
 		url = strings.TrimSuffix(url, ".git")
 		if strings.HasSuffix(url, "/"+slug) || strings.HasSuffix(url, ":"+slug) {
-			return name
+			return name, true
 		}
 	}
-	return "origin"
+	return "", false
 }
 
 // PrepareReview fetches a pull request into refs of the app's own and returns the commits to diff.

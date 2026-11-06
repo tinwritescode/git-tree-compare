@@ -14,6 +14,8 @@ export function DiffAnchor(arg1:string):Promise<string>;
 
 export function ExportPatch(arg1:main.Scope,arg2:string):Promise<string>;
 
+export function FindClone(arg1:string,arg2:Array<string>):Promise<string>;
+
 export function HomeDir():Promise<string>;
 
 export function InstallCLI():Promise<string>;
