@@ -33,11 +33,27 @@ type App struct {
 
 	mu      sync.Mutex
 	pending *OpenRequest // last request, kept until the frontend takes it
+
+	claude *claudeRunner
 }
 
 // NewApp creates a new App application struct
 func NewApp() *App {
-	return &App{}
+	a := &App{}
+	a.claude = newClaudeRunner(a.emitClaude, claudeCacheDir(), os.TempDir())
+	return a
+}
+
+// emitClaude sends a Claude task's progress to the frontend as claude:<taskID>.
+func (a *App) emitClaude(taskID string, ev ClaudeEvent) {
+	if a.ctx != nil {
+		runtime.EventsEmit(a.ctx, eventClaudePrefix+taskID, ev)
+	}
+}
+
+// shutdown runs as the app quits: Claude stops, and its worktrees are removed.
+func (a *App) shutdown(ctx context.Context) {
+	a.claude.shutdown()
 }
 
 // startup is called when the app starts. The context is saved
@@ -301,6 +317,31 @@ func (a *App) OpenAtHead(repo string, number int, head, path, editor string) err
 // PRChecks lists the CI checks on a pull request's head.
 func (a *App) PRChecks(repo string, number int) ([]Check, error) {
 	return PRChecks(repo, number)
+}
+
+// ClaudeStatus reports whether claude is installed, and the model tasks use by default.
+func (a *App) ClaudeStatus() ClaudeInfo {
+	return claudeStatus()
+}
+
+// StartBrief writes the brief of a review in the background. Its progress arrives as
+// claude:<taskID> events, ending with one result or one error.
+func (a *App) StartBrief(taskID string, req BriefRequest) error {
+	task, err := briefTask(taskID, req)
+	if err != nil {
+		return err
+	}
+	return a.claude.start(task)
+}
+
+// CancelClaude stops a running Claude task.
+func (a *App) CancelClaude(taskID string) {
+	a.claude.cancel(taskID)
+}
+
+// ReleaseClaude removes the checkouts Claude read for a repository, once its review closes.
+func (a *App) ReleaseClaude(repo string) {
+	a.claude.release(repo)
 }
 
 // orEmpty turns a nil slice into an empty one. Go sends nil as null, and the

@@ -1,0 +1,16 @@
+#!/bin/sh
+# A stand-in for the claude CLI in tests. It records how it was called, then prints the canned
+# stream-json in $CLAUDE_FIXTURE. With CLAUDE_HANG set it starts a child that sleeps and waits for
+# it, so a test can check that cancelling kills the whole process group.
+[ "$1" = "--version" ] && { echo "2.1.318 (Claude Code)"; exit 0; }
+printf '%s\n' "$@" > "$CLAUDE_LOG.args"
+pwd -P > "$CLAUDE_LOG.pwd"
+cat > "$CLAUDE_LOG.stdin"
+echo run >> "$CLAUDE_LOG.count"
+if [ -n "$CLAUDE_HANG" ]; then
+  sleep 60 &
+  echo $! > "$CLAUDE_LOG.child"
+  wait
+fi
+cat "$CLAUDE_FIXTURE"
+[ -z "$CLAUDE_FAIL" ] || { echo "$CLAUDE_FAIL" >&2; exit 1; }

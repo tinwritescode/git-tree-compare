@@ -1,0 +1,47 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["summary", "risks", "chapters", "untested"],
+  "properties": {
+    "summary": {"type": "string", "description": "What the change does and why, in two to four plain sentences."},
+    "risks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "line", "level", "why"],
+        "properties": {
+          "path": {"type": "string", "description": "A changed file, exactly as the diff names it after b/."},
+          "line": {"type": "integer", "description": "The line in the new file, or 0 for the whole file."},
+          "level": {"type": "string", "enum": ["low", "med", "high"]},
+          "why": {"type": "string", "description": "One sentence a reviewer can check."}
+        }
+      }
+    },
+    "chapters": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["title", "paths"],
+        "properties": {
+          "title": {"type": "string", "description": "A few words naming one step of the change."},
+          "paths": {"type": "array", "items": {"type": "string"}}
+        }
+      }
+    },
+    "untested": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "line", "what"],
+        "properties": {
+          "path": {"type": "string"},
+          "line": {"type": "integer"},
+          "what": {"type": "string", "description": "The changed behaviour no test in the diff covers."}
+        }
+      }
+    }
+  }
+}

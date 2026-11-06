@@ -50,6 +50,7 @@ func main() {
 				app.requestOpen(launch)
 			}
 		},
+		OnShutdown: app.shutdown,
 		Bind: []interface{}{
 			app,
 		},

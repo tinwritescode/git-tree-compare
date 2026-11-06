@@ -1,0 +1,3 @@
+{"type":"system","subtype":"init","cwd":"/tmp/wt","session_id":"5d1c2c4e-0000-4000-8000-000000000000","tools":["Glob","Grep","Read"],"mcp_servers":[],"model":"claude-opus-5-5"}
+not json at all
+{"type":"result","subtype":"error_max_budget_usd","is_error":true,"num_turns":3,"total_cost_usd":0.1042,"session_id":"5d1c2c4e-0000-4000-8000-000000000000","errors":["Reached maximum budget ($0.1)"]}

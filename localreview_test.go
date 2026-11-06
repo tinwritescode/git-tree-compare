@@ -252,3 +252,15 @@ func TestListLocalInAnEmptyRepository(t *testing.T) {
 		t.Fatalf("local = %+v", local)
 	}
 }
+
+func TestLocalReviewsSayWhetherTheyAreACommitOrABranch(t *testing.T) {
+	repo, _ := branchRepo(t)
+	c, err := ReviewCommit(repo, "main")
+	if err != nil || c.Kind != "commit" {
+		t.Fatalf("commit: %+v, %v", c, err)
+	}
+	b, err := ReviewBranch(repo, "feat", "main")
+	if err != nil || b.Kind != "branch" {
+		t.Fatalf("branch: %+v, %v", b, err)
+	}
+}

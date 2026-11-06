@@ -10,6 +10,7 @@ import (
 // LocalReview is a commit or a branch reviewed from git alone, with no pull request behind it.
 // Marks stay on this machine.
 type LocalReview struct {
+	Kind   string `json:"kind"`   // commit or branch
 	Title  string `json:"title"`  // "a1b2c3d Fix the parser", or "feat/x into main"
 	Detail string `json:"detail"` // author and age of a commit, or how many commits a branch adds
 	Base   string `json:"base"`
@@ -80,7 +81,7 @@ func ReviewCommit(repo, rev string) (LocalReview, error) {
 		return LocalReview{}, err
 	}
 	title, detail, _ := strings.Cut(strings.TrimSpace(info), "\x00")
-	return LocalReview{Title: title, Detail: detail, Base: base, Head: head}, nil
+	return LocalReview{Kind: "commit", Title: title, Detail: detail, Base: base, Head: head}, nil
 }
 
 // ReviewBranch reviews what branch adds over base, from their merge base as a pull request
@@ -120,6 +121,7 @@ func ReviewBranch(repo, branch, base string) (LocalReview, error) {
 		return LocalReview{}, err
 	}
 	return LocalReview{
+		Kind:   "branch",
 		Title:  headName + " into " + baseName,
 		Detail: plural(strings.TrimSpace(count), "commit"),
 		Base:   from,

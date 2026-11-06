@@ -1,5 +1,27 @@
 export namespace main {
 	
+	export class BriefRequest {
+	    repo: string;
+	    base: string;
+	    head: string;
+	    pr: number;
+	    title: string;
+	    model: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new BriefRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.repo = source["repo"];
+	        this.base = source["base"];
+	        this.head = source["head"];
+	        this.pr = source["pr"];
+	        this.title = source["title"];
+	        this.model = source["model"];
+	    }
+	}
 	export class Check {
 	    name: string;
 	    state: string;
@@ -16,6 +38,22 @@ export namespace main {
 	        this.state = source["state"];
 	        this.link = source["link"];
 	        this.bucket = source["bucket"];
+	    }
+	}
+	export class ClaudeInfo {
+	    installed: boolean;
+	    version: string;
+	    defaultModel: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ClaudeInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.installed = source["installed"];
+	        this.version = source["version"];
+	        this.defaultModel = source["defaultModel"];
 	    }
 	}
 	export class CommitRef {
@@ -147,6 +185,7 @@ export namespace main {
 	    }
 	}
 	export class LocalReview {
+	    kind: string;
 	    title: string;
 	    detail: string;
 	    base: string;
@@ -158,6 +197,7 @@ export namespace main {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.kind = source["kind"];
 	        this.title = source["title"];
 	        this.detail = source["detail"];
 	        this.base = source["base"];
