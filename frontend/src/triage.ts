@@ -99,9 +99,12 @@ export function readingOrder<T extends {path: string}>(files: T[]): T[] {
 }
 
 // The "By state" tree: what is left to read, what a push changed after you viewed it, what is
-// done, and the noise.
+// done, and the noise. "To review" can be split into chapters, the steps a brief suggests;
+// a section's files are always in the order on screen.
 export type SectionKind = 'to-review' | 'changed' | 'reviewed' | 'folded';
-export type Section = {kind: SectionKind; files: FileChange[]};
+export type FileGroup<T = FileChange> = {title: string; files: T[]};
+export type Section = {kind: SectionKind; files: FileChange[]; chapters: FileGroup[]};
+export type ChapterPlan = {title: string; paths: string[]};
 
 export const SECTION_TITLE: Record<SectionKind, string> = {
     'to-review': 'To review',
@@ -109,6 +112,8 @@ export const SECTION_TITLE: Record<SectionKind, string> = {
     reviewed: 'Reviewed',
     folded: 'Folded',
 };
+
+export const OTHER_CHAPTER = 'Other changes';
 
 const SECTION_ORDER: SectionKind[] = ['to-review', 'changed', 'reviewed', 'folded'];
 
@@ -119,11 +124,29 @@ function sectionOf(file: FileChange, record: ReviewRecord): SectionKind {
     return 'to-review';
 }
 
+// groupByChapter splits files, already in reading order, into the chapters in their order. A file
+// goes in the first chapter that names it; files no chapter names follow as "Other changes".
+// With no chapter naming any of the files there is nothing to group, so the result is empty.
+export function groupByChapter<T extends {path: string}>(files: T[], chapters: ChapterPlan[]): FileGroup<T>[] {
+    const chapterOf = new Map<string, number>();
+    chapters.forEach((c, i) => c.paths.forEach(p => chapterOf.has(p) || chapterOf.set(p, i)));
+    const groups = chapters
+        .map((c, i) => ({title: c.title, files: files.filter(f => chapterOf.get(f.path) === i)}))
+        .filter(g => g.files.length > 0);
+    if (!groups.length) return [];
+    const rest = files.filter(f => !chapterOf.has(f.path));
+    return rest.length ? [...groups, {title: OTHER_CHAPTER, files: rest}] : groups;
+}
+
 // groupByState puts each file in its section, each section in reading order. Empty sections are left out.
-export function groupByState({files, record}: {files: FileChange[]; record: ReviewRecord}): Section[] {
+export function groupByState({files, record, chapters = []}: {files: FileChange[]; record: ReviewRecord; chapters?: ChapterPlan[]}): Section[] {
     const ordered = readingOrder(files);
     return SECTION_ORDER
-        .map(kind => ({kind, files: ordered.filter(f => sectionOf(f, record) === kind)}))
+        .map(kind => {
+            const inSection = ordered.filter(f => sectionOf(f, record) === kind);
+            const groups = kind === 'to-review' ? groupByChapter(inSection, chapters) : [];
+            return {kind, files: groups.length ? groups.flatMap(g => g.files) : inSection, chapters: groups};
+        })
         .filter(s => s.files.length > 0);
 }
 

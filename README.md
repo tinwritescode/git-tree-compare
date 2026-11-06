@@ -121,6 +121,15 @@ Nothing you draft reaches GitHub until you finish the review.
 - Press `⌘↵` (or **Finish review**) to choose Comment, Approve or Request changes, write a summary, and post it with every draft in one review. Requesting changes needs a summary or a draft. On your own pull request GitHub only lets you comment. If GitHub refuses the review, nothing is posted, your drafts stay, and the sheet shows what GitHub said.
 - For a commit or branch, Finish offers **Copy summary** (Markdown with your notes and drafts) and **Export patch**.
 
+### Claude brief
+
+When [Claude Code](https://claude.com/claude-code) (`claude`) is installed, opening a pull request or a branch asks Claude for a brief in the background. Nothing shows when `claude` is not installed.
+
+- The header says what Claude is reading, then **Brief ready**. Press `⇧B` to show or hide the **Claude · brief** card above the diff: a summary, where to slow down, and changed behaviour no test covers.
+- Files Claude thinks are risky get a dot in the tree; hover it for why. When the brief splits the change into steps, **To review** is grouped by them.
+- Claude reads a read-only checkout of the head commit, with only its Read, Grep and Glob tools, and treats the pull request's text and diff as untrusted data. The checkout is removed when the review closes or the app quits. A brief is kept on this machine per commit, so opening the same head again costs nothing.
+- In `⌘K`: **Claude model…** picks the model (Opus 5.5 by default), and **No AI for this repository** turns Claude off for the repository you are in.
+
 ## Keyboard shortcuts
 
 Press `?` in the app to see this list.
@@ -140,6 +149,7 @@ Press `?` in the app to see this list.
 | `Esc` | Clear the selection, or the line you clicked |
 | `c` | Comment on the line you clicked, or on the file |
 | `⌘↵` | Finish review; in the Finish sheet, submit |
+| `⇧B` | Show or hide Claude's brief |
 | `[` `]` | Previous or next hunk |
 | `v` | Split or unified view |
 | `b` | Ignore whitespace |

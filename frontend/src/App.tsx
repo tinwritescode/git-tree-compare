@@ -2,8 +2,10 @@ import {Fragment, memo, type MouseEvent as ReactMouseEvent, type ReactNode, type
 import {useVirtualizer} from '@tanstack/react-virtual';
 import './App.css';
 import {
+    CancelClaude,
     Changes,
     CheckUpdate,
+    ClaudeStatus,
     CurrentPRNumber,
     FindClone,
     Diff,
@@ -20,16 +22,23 @@ import {
     PRComments,
     PRViewedStates,
     PrepareReview,
+    ReleaseClaude,
     ReplyToThread,
     ResolveRepo,
     ReviewBranch,
     ReviewCommit,
     SetThreadResolved,
     SetViewed,
+    StartBrief,
     SubmitReview,
     TakePendingRepo,
 } from '../wailsjs/go/main/App';
 import {BrowserOpenURL, EventsOn} from '../wailsjs/runtime/runtime';
+import {BriefCard} from './brief';
+import {
+    briefChip, type BriefRun, briefRunStep, briefState, CLAUDE_TASKS, type ClaudeModels, type ClaudeTaskKind, modelChoices, modelFor, parseClaudeEvent,
+    parseClaudeModels, parseRepoList, type RiskMark, riskMarks, TASK_LABEL,
+} from './claude';
 import {diffRows, type DiffRow, parseDiff, type Line, type SplitRow} from './diff';
 import {highlight} from './highlight';
 import {emptyQuery, SearchDialog, type SearchHit, type SearchQuery} from './search-dialog';
@@ -71,6 +80,8 @@ const UPDATE_DISMISSED_KEY = 'git-tree-compare:update-dismissed';
 const RECENT_KEY = 'git-tree-compare:recent';
 const RECENT_LIMIT = 8;
 const TREE_VIEW_KEY = 'git-tree-compare:treeView';
+const NO_AI_KEY = 'git-tree-compare:noAI'; // repositories the user turned AI off for
+const CLAUDE_MODELS_KEY = 'git-tree-compare:claudeModels'; // the model per kind of Claude task
 
 function readStore<T>(key: string, fallback: T): T {
     try {
@@ -172,6 +183,12 @@ function App() {
     // A file shown whole for one visit because a search hit sat outside its diff. The saved setting is untouched.
     const [tempFull, setTempFull] = useState<string | null>(null);
     const [paletteOpen, setPaletteOpen] = useState(false);
+    const [paletteMode, setPaletteMode] = useState<'commands' | 'model'>('commands'); // ⌘K lists commands, or Claude models
+    const [claudeInfo, setClaudeInfo] = useState<main.ClaudeInfo | null>(null); // null until known, and AI stays hidden
+    const [noAIRepos, setNoAIRepos] = useState<string[]>(() => parseRepoList(readStore<unknown>(NO_AI_KEY, [])));
+    const [claudeModels, setClaudeModels] = useState<ClaudeModels>(() => parseClaudeModels(readStore<unknown>(CLAUDE_MODELS_KEY, {})));
+    const [briefRun, setBriefRun] = useState<BriefRun>({kind: 'off'});
+    const [briefOpen, setBriefOpen] = useState(true);
     const [picking, setPicking] = useState(false);
     const [recent, setRecent] = useState<string[]>(() => readStore<string[]>(RECENT_KEY, []));
     const [pickError, setPickError] = useState('');
@@ -209,7 +226,18 @@ function App() {
     }, [changes, filter]);
     const tree = useMemo(() => buildTree(visibleChanges, sort), [visibleChanges, sort]);
     const treeView = subject ? treeViews[subject.kind] : 'folders';
-    const sections = useMemo(() => groupByState({files: visibleChanges, record}), [visibleChanges, record]);
+    // Claude runs when it is installed and not turned off here. The brief is for pull requests and branches.
+    const aiOn = !!claudeInfo?.installed && !noAIRepos.includes(repo);
+    const briefModel = modelFor({models: claudeModels, kind: 'brief', fallback: claudeInfo?.defaultModel ?? ''});
+    const briefWanted = aiOn && (pr !== null || local?.kind === 'branch');
+    const changedPaths = useMemo(() => new Set(changes.map(c => c.path)), [changes]);
+    const brief = useMemo(() => briefState({run: briefRun, paths: changedPaths}), [briefRun, changedPaths]);
+    const shownBrief = brief.kind === 'ready' ? brief.brief : null;
+    const risks = useMemo<Record<string, RiskMark>>(() => (shownBrief ? riskMarks(shownBrief) : {}), [shownBrief]);
+    const sections = useMemo(
+        () => groupByState({files: visibleChanges, record, chapters: shownBrief?.chapters ?? []}),
+        [visibleChanges, record, shownBrief],
+    );
     // The files in the order on screen, skipping closed folders and sections, so arrow keys and x follow what is shown.
     const files = useMemo(
         () => (treeView === 'state'
@@ -786,6 +814,33 @@ function App() {
         };
     }, [scope]);
 
+    // Whether claude is installed decides whether any AI shows. Asked once, at launch.
+    useEffect(() => {
+        ClaudeStatus().then(setClaudeInfo).catch(() => setClaudeInfo(null));
+    }, []);
+
+    // The brief of the open pull request or branch, written in the background as soon as it opens,
+    // and again when new commits land. Closing the review stops it and removes Claude's checkout.
+    useEffect(() => {
+        if (!briefWanted || !commits) {
+            setBriefRun({kind: 'off'});
+            return;
+        }
+        const id = `brief-${newDraftId()}`;
+        setBriefRun({kind: 'running', reading: null});
+        const off = EventsOn(`claude:${id}`, (payload: unknown) => {
+            const event = parseClaudeEvent(payload);
+            if (event) setBriefRun(run => briefRunStep(run, event));
+        });
+        StartBrief(id, main.BriefRequest.createFrom({
+            repo, base: commits.base, head: commits.head, pr: pr?.number ?? 0, title: pr?.title ?? local?.title ?? '', model: briefModel,
+        })).catch(e => setBriefRun({kind: 'error', message: String(e)}));
+        return () => {
+            off();
+            CancelClaude(id).finally(() => ReleaseClaude(repo)).catch(() => {});
+        };
+    }, [briefWanted, repo, commits?.base, commits?.head, pr?.number, briefModel]);
+
     // With nothing selected, the first file in the order on screen opens, before the frame is drawn.
     useLayoutEffect(() => {
         if (!selected) setSelected(files[0] ?? rulerFiles[0] ?? changes[0] ?? null);
@@ -806,6 +861,8 @@ function App() {
     useEffect(() => writeStore('git-tree-compare:fullFile', fullFile), [fullFile]);
     useEffect(() => writeStore('git-tree-compare:ignoreWS', ignoreWS), [ignoreWS]);
     useEffect(() => writeStore(TREE_VIEW_KEY, treeViews), [treeViews]);
+    useEffect(() => writeStore(NO_AI_KEY, noAIRepos), [noAIRepos]);
+    useEffect(() => writeStore(CLAUDE_MODELS_KEY, claudeModels), [claudeModels]);
 
     useEffect(() => {
         if (!selected || !scope) {
@@ -876,6 +933,7 @@ function App() {
             if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
                 e.preventDefault();
                 setPaletteOpen(open => !open);
+                setPaletteMode('commands');
                 return;
             }
             if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'f') {
@@ -969,6 +1027,9 @@ function App() {
                     return;
                 case 'C':
                     if (pr) toggleComments();
+                    return;
+                case 'B':
+                    if (brief.kind !== 'off') setBriefOpen(v => !v);
                     return;
                 case '[':
                 case ']':
@@ -1149,6 +1210,26 @@ function App() {
         }
     }
 
+    // Turns AI off for this repository, or back on. Saved, so it stays off after a restart.
+    function toggleNoAI() {
+        setNoAIRepos(list => (list.includes(repo) ? list.filter(r => r !== repo) : [...list, repo]));
+    }
+
+    function setClaudeModel(kind: ClaudeTaskKind, model: string) {
+        setClaudeModels(models => ({...models, [kind]: model}));
+        showFlash(`${TASK_LABEL[kind]} uses ${model} from now on.`);
+    }
+
+    // The ⌘K list of Claude models, per kind of task.
+    const modelCommands: Command[] = claudeInfo ? CLAUDE_TASKS.flatMap(kind => {
+        const current = modelFor({models: claudeModels, kind, fallback: claudeInfo.defaultModel});
+        return modelChoices(claudeInfo.defaultModel).map(model => ({
+            id: `model:${kind}:${model}`,
+            label: `${TASK_LABEL[kind]}: ${model}${model === claudeInfo.defaultModel ? ' (default)' : ''}${model === current ? ' ✓' : ''}`,
+            run: () => setClaudeModel(kind, model),
+        }));
+    }) : [];
+
     const commands: Command[] = [
         ...(reviewing ? [
             {id: 'back', label: 'Back to pull requests', hint: 'p', run: closeReview},
@@ -1172,6 +1253,16 @@ function App() {
             {id: 'summary', label: 'Copy summary as Markdown', run: copySummary},
             {id: 'patch', label: 'Export patch', run: exportPatch},
         ] : []),
+        ...(brief.kind !== 'off' ? [
+            {id: 'brief', label: briefOpen ? 'Hide the Claude brief' : 'Show the Claude brief', hint: '⇧B', run: () => setBriefOpen(v => !v)},
+        ] : []),
+        ...(aiOn ? [{id: 'model', label: 'Claude model…', run: () => {
+            setPaletteMode('model');
+            setPaletteOpen(true);
+        }}] : []),
+        ...(claudeInfo?.installed && repo ? [{
+            id: 'noai', label: noAIRepos.includes(repo) ? 'Use AI for this repository' : 'No AI for this repository', run: toggleNoAI,
+        }] : []),
         {id: 'refresh', label: 'Refresh', hint: 'r', run: () => setPollTick(t => t + 1)},
         {id: 'terminal', label: termOpen ? 'Hide terminal' : 'Show terminal', hint: '⌃`', run: () => setTermOpen(v => !v)},
         {id: 'repo', label: 'Open another repository', run: chooseRepo},
@@ -1274,7 +1365,15 @@ function App() {
                 />
             )}
 
-            {paletteOpen && <CommandPalette commands={commands} onClose={() => setPaletteOpen(false)}/>}
+            {paletteOpen && (
+                <CommandPalette
+                    commands={paletteMode === 'model' ? modelCommands : commands}
+                    onClose={() => {
+                        setPaletteOpen(false);
+                        setPaletteMode('commands');
+                    }}
+                />
+            )}
 
             {picking && (
                 <RepoPicker
@@ -1328,6 +1427,17 @@ function App() {
                             <span className="sync-note" role="status" title={syncError}>
                                 {unsynced.size} not on GitHub yet, retrying
                             </span>
+                        )}
+                        {briefChip(brief) && (
+                            <button
+                                type="button"
+                                className={`claude-chip ${brief.kind}`}
+                                onClick={() => setBriefOpen(v => !v)}
+                                title={brief.kind === 'error' ? brief.message : 'Show or hide the brief (⇧B)'}
+                                aria-live="polite"
+                            >
+                                {briefChip(brief)}
+                            </button>
                         )}
                         <span className="review-count" title="Files reviewed, and files a push changed after you reviewed them">
                             {progressText({reviewed: reviewedCount, total: changes.length, changed: changedSinceReview.size})}
@@ -1407,6 +1517,7 @@ function App() {
                                     drafts={draftCountByPath}
                                     changedSinceReview={changedSinceReview}
                                     unsynced={unsynced}
+                                    risks={risks}
                                     onToggle={toggleFolder}
                                     onToggleReviewed={path => toggleFiles([path])}
                                     onPick={pickFile}
@@ -1426,6 +1537,7 @@ function App() {
                                     drafts={draftCountByPath}
                                     changedSinceReview={changedSinceReview}
                                     unsynced={unsynced}
+                                    risks={risks}
                                     onToggleReviewed={path => toggleFiles([path])}
                                     onPick={pickFile}
                                     onContextMenu={openFileMenu}
@@ -1458,6 +1570,9 @@ function App() {
                                     checks={pr ? {number: pr.number, onOpenURL: BrowserOpenURL} : null}
                                     onClose={() => setCmdOpen(false)}
                                 />
+                            )}
+                            {brief.kind !== 'off' && (
+                                <BriefCard state={brief} open={briefOpen} onToggle={() => setBriefOpen(v => !v)} onOpenFile={openCommentFile}/>
                             )}
                             {selected
                                 ? <DiffPanel
@@ -1539,6 +1654,7 @@ type RowProps = {
     drafts: Record<string, number>; // draft comments per file
     changedSinceReview: Set<string>;
     unsynced: Set<string>;
+    risks: Record<string, RiskMark>; // the brief's worst risk per file
     onToggleReviewed: (path: string) => void;
     onPick: (file: FileChange, e: ReactMouseEvent) => void;
     onContextMenu: (file: FileChange, e: ReactMouseEvent) => void;
@@ -1587,6 +1703,7 @@ function TreeItem(props: TreeProps & {node: TreeNode; depth: number}) {
                     drafts={rest.drafts}
                     changedSinceReview={rest.changedSinceReview}
                     unsynced={rest.unsynced}
+                    risks={rest.risks}
                     onToggle={rest.onToggle}
                     onToggleReviewed={rest.onToggleReviewed}
                     onPick={rest.onPick}
@@ -1618,6 +1735,9 @@ function FileRow(props: RowProps & {file: FileChange; label: ReactNode; depth: n
                 />
                 <span className={`status status-${file.status}`} title={STATUS_LABEL[file.status]}>{file.status}</span>
                 <span className="name" title={file.path}>{label}</span>
+                {rest.risks[file.path] && (
+                    <span className={`risk-dot risk-${rest.risks[file.path].level}`} title={`Claude: ${rest.risks[file.path].why}`}>●</span>
+                )}
                 {noise && <span className="noise-tag">{NOISE_LABEL[noise]}</span>}
                 {rest.notes[file.path] && <span className="note-dot" title="Has a note">●</span>}
                 {rest.comments[file.path] > 0 && (
@@ -1651,15 +1771,20 @@ function StateList(props: RowProps & {sections: Section[]; closed: Set<SectionKi
                         </div>
                         {open && (
                             <ul className="tree-list">
-                                {section.files.map(file => (
-                                    <FileRow
-                                        key={file.path}
-                                        file={file}
-                                        label={<>{basename(file.path)}<span className="dir">{folderOf(file.path)}</span></>}
-                                        depth={1}
-                                        noise={section.kind === 'folded' ? noiseOf(file) : null}
-                                        {...rest}
-                                    />
+                                {(section.chapters.length ? section.chapters : [{title: '', files: section.files}]).map((group, i) => (
+                                    <Fragment key={i}>
+                                        {group.title && <li className="chapter-head" title="A step of the change, from Claude's brief">{group.title}</li>}
+                                        {group.files.map(file => (
+                                            <FileRow
+                                                key={file.path}
+                                                file={file}
+                                                label={<>{basename(file.path)}<span className="dir">{folderOf(file.path)}</span></>}
+                                                depth={1}
+                                                noise={section.kind === 'folded' ? noiseOf(file) : null}
+                                                {...rest}
+                                            />
+                                        ))}
+                                    </Fragment>
                                 ))}
                             </ul>
                         )}
@@ -2135,6 +2260,7 @@ const SHORTCUT_GROUPS: {title: string; rows: [string, string][]}[] = [
         ['Esc', 'Clear the selection, or the focused line'],
         ['c', 'Comment on the line you clicked, or on the file'],
         ['⌘↵', 'Finish review; in the Finish sheet, submit'],
+        ['⇧B', "Show or hide Claude's brief"],
     ]},
     {title: 'Diff', rows: [
         ['[ ]', 'Previous or next hunk'],

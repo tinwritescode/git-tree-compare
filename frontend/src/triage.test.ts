@@ -1,7 +1,7 @@
 import {describe, expect, it} from 'vitest';
 import {emptyRecord} from './review';
 import type {FileChange} from './tree';
-import {groupByState, noiseOf, parseTreeViews, readingOrder} from './triage';
+import {groupByChapter, groupByState, noiseOf, parseTreeViews, readingOrder} from './triage';
 
 const file = (path: string, more: Partial<FileChange> = {}): FileChange => ({path, status: 'M', added: 1, deleted: 1, ...more});
 const paths = (files: {path: string}[]) => files.map(f => f.path);
@@ -132,6 +132,45 @@ describe('groupByState', () => {
 
     it('has no sections without files', () => {
         expect(groupByState({files: [], record: emptyRecord})).toEqual([]);
+    });
+});
+
+describe('groupByChapter', () => {
+    const files = [file('a.go'), file('a_test.go'), file('b.go'), file('c.go'), file('d.go')];
+
+    it('groups files by chapter, in chapter order, keeping reading order inside each', () => {
+        const groups = groupByChapter(files, [
+            {title: 'Callers', paths: ['c.go', 'b.go']},
+            {title: 'Limit', paths: ['a_test.go', 'a.go']},
+        ]);
+        expect(groups.map(g => [g.title, paths(g.files)])).toEqual([
+            ['Callers', ['b.go', 'c.go']],
+            ['Limit', ['a.go', 'a_test.go']],
+            ['Other changes', ['d.go']],
+        ]);
+    });
+
+    it('puts a file named by two chapters in the first only', () => {
+        const groups = groupByChapter(files.slice(0, 2), [{title: 'One', paths: ['a.go']}, {title: 'Two', paths: ['a.go', 'a_test.go']}]);
+        expect(groups.map(g => [g.title, paths(g.files)])).toEqual([['One', ['a.go']], ['Two', ['a_test.go']]]);
+    });
+
+    it('does not group when no chapter names a file in the list', () => {
+        expect(groupByChapter(files, [])).toEqual([]);
+        expect(groupByChapter(files, [{title: 'Gone', paths: ['reviewed.go']}])).toEqual([]);
+    });
+});
+
+describe('groupByState with chapters', () => {
+    it('groups only "To review" by chapter, and its files follow the chapters', () => {
+        const files = [file('a.go'), file('b.go'), file('c.go'), file('go.sum')];
+        const record = {states: {'c.go': 'VIEWED'}, pending: {}};
+        const sections = groupByState({files, record, chapters: [{title: 'Core', paths: ['b.go', 'c.go']}]});
+        expect(sections.map(s => [s.kind, paths(s.files), s.chapters.map(c => [c.title, paths(c.files)])])).toEqual([
+            ['to-review', ['b.go', 'a.go'], [['Core', ['b.go']], ['Other changes', ['a.go']]]],
+            ['reviewed', ['c.go'], []],
+            ['folded', ['go.sum'], []],
+        ]);
     });
 });
 
