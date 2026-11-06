@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -143,18 +144,66 @@ func ListRefs(repo string) (RefList, error) {
 	if name, _, err := resolveFirst(repo, defaultBases(repo)...); err == nil {
 		list.DefaultBase = strings.TrimPrefix(name, "origin/")
 	}
-	log, err := runGit(repo, "log", fmt.Sprintf("-n%d", pickerCommits), "--format=%H%x00%h%x00%s%x00%an%x00%ar",
-		"HEAD", "--branches", "--remotes")
+	list.Commits = recentCommits(repo, pickerCommits, "HEAD", "--branches", "--remotes")
+	return list, nil
+}
+
+// LocalSubjects is what the inbox offers to review without a pull request.
+type LocalSubjects struct {
+	Branch  *LocalBranch `json:"branch,omitempty"` // nil on the default branch, detached, or with nothing new
+	Commits []CommitRef  `json:"commits"`          // the latest commits on HEAD, newest first
+}
+
+// LocalBranch is the checked-out branch and how far it is ahead of the default branch.
+type LocalBranch struct {
+	Name  string `json:"name"`
+	Base  string `json:"base"` // the default branch, such as "main"
+	Ahead int    `json:"ahead"`
+}
+
+// inboxCommits caps how many commits on HEAD the inbox lists.
+const inboxCommits = 5
+
+// ListLocal lists the checked-out branch, when it has commits the default branch lacks, and the
+// latest commits on HEAD. Opening the branch is ReviewBranch with the default base.
+func ListLocal(repo string) LocalSubjects {
+	local := LocalSubjects{Commits: recentCommits(repo, inboxCommits, "HEAD")}
+	name, err := runGit(repo, "symbolic-ref", "--quiet", "--short", "HEAD")
 	if err != nil {
-		return list, nil // a repository with no commits has nothing to pick
+		return local // detached HEAD: no branch to offer
 	}
+	name = strings.TrimSpace(name)
+	baseName, baseHead, err := resolveFirst(repo, defaultBases(repo)...)
+	base := strings.TrimPrefix(baseName, "origin/")
+	if err != nil || name == base {
+		return local
+	}
+	count, err := runGit(repo, "rev-list", "--count", baseHead+"..HEAD")
+	if err != nil {
+		return local // a branch with no commits yet
+	}
+	if ahead, _ := strconv.Atoi(strings.TrimSpace(count)); ahead > 0 {
+		local.Branch = &LocalBranch{Name: name, Base: base, Ahead: ahead}
+	}
+	return local
+}
+
+// recentCommits lists up to n commits reachable from revs, newest first. A repository with no
+// commits has none.
+func recentCommits(repo string, n int, revs ...string) []CommitRef {
+	args := append([]string{"log", fmt.Sprintf("-n%d", n), "--format=%H%x00%h%x00%s%x00%an%x00%ar"}, revs...)
+	log, err := runGit(repo, args...)
+	if err != nil {
+		return nil
+	}
+	var commits []CommitRef
 	for _, line := range splitLines(log) {
 		f := strings.Split(line, "\x00")
 		if len(f) == 5 {
-			list.Commits = append(list.Commits, CommitRef{Hash: f[0], Short: f[1], Subject: f[2], Author: f[3], When: f[4]})
+			commits = append(commits, CommitRef{Hash: f[0], Short: f[1], Subject: f[2], Author: f[3], When: f[4]})
 		}
 	}
-	return list, nil
+	return commits
 }
 
 // defaultBases lists where the default branch may be, most likely first: what origin/HEAD

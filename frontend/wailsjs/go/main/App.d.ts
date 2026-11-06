@@ -26,6 +26,8 @@ export function InstalledEditors():Promise<Array<main.Editor>>;
 
 export function ListDir(arg1:string):Promise<main.DirListing>;
 
+export function ListLocal(arg1:string):Promise<main.LocalSubjects>;
+
 export function ListPRs(arg1:string):Promise<Array<main.PRInfo>>;
 
 export function ListRefs(arg1:string):Promise<main.RefList>;

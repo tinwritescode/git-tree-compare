@@ -167,6 +167,13 @@ func (a *App) ListRefs(repo string) (RefList, error) {
 	return ListRefs(repo)
 }
 
+// ListLocal lists the checked-out branch and the latest commits, which the inbox offers to review.
+func (a *App) ListLocal(repo string) LocalSubjects {
+	local := ListLocal(repo)
+	local.Commits = orEmpty(local.Commits)
+	return local
+}
+
 // PRViewedStates returns the viewer's state of every file in the pull request.
 func (a *App) PRViewedStates(repo, prID string) (map[string]string, error) {
 	return PRViewedStates(repo, prID)

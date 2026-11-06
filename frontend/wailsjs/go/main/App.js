@@ -50,6 +50,10 @@ export function ListDir(arg1) {
   return window['go']['main']['App']['ListDir'](arg1);
 }
 
+export function ListLocal(arg1) {
+  return window['go']['main']['App']['ListLocal'](arg1);
+}
+
 export function ListPRs(arg1) {
   return window['go']['main']['App']['ListPRs'](arg1);
 }

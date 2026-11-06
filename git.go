@@ -11,17 +11,26 @@ import (
 
 // FileChange is one entry in the file tree.
 // Status is A, M, D, or R. Added and Deleted are line counts.
+// Generated and WhitespaceOnly are facts only git knows; the frontend decides from them what to fold.
 type FileChange struct {
-	Path    string `json:"path"`
-	OldPath string `json:"oldPath,omitempty"`
-	Status  string `json:"status"`
-	Added   int    `json:"added"`
-	Deleted int    `json:"deleted"`
+	Path           string `json:"path"`
+	OldPath        string `json:"oldPath,omitempty"`
+	Status         string `json:"status"`
+	Added          int    `json:"added"`
+	Deleted        int    `json:"deleted"`
+	Generated      bool   `json:"generated,omitempty"`      // linguist-generated at head
+	WhitespaceOnly bool   `json:"whitespaceOnly,omitempty"` // modified, but nothing is left with -w
 }
 
 // runGit runs git in repo and returns stdout.
 func runGit(repo string, args ...string) (string, error) {
+	return runGitInput(repo, "", args...)
+}
+
+// runGitInput runs git in repo with input on stdin and returns stdout.
+func runGitInput(repo, input string, args ...string) (string, error) {
 	cmd := exec.Command("git", append([]string{"-C", repo}, args...)...)
+	cmd.Stdin = strings.NewReader(input)
 	out, err := cmd.Output()
 	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {
@@ -49,15 +58,29 @@ func ChangedFiles(s Scope) ([]FileChange, error) {
 	}
 	changes := parseNameStatus(out)
 
-	numstat, err := scopeDiff(s, []string{"--numstat"}, "")
-	if err != nil {
-		return nil, err
-	}
-	stats := parseNumstat(numstat)
-	for i := range changes {
-		if st, ok := stats[changes[i].Path]; ok {
-			changes[i].Added, changes[i].Deleted = st[0], st[1]
+	// Line counts with and without whitespace: the scope picks which to show, and a file that
+	// changes only in the first is whitespace only.
+	var stats [2]map[string][2]int
+	for i, ignoreWS := range []bool{false, true} {
+		numstat, err := scopeDiff(Scope{Repo: s.Repo, Base: s.Base, Head: s.Head, IgnoreWS: ignoreWS}, []string{"--numstat"}, "")
+		if err != nil {
+			return nil, err
 		}
+		stats[i] = parseNumstat(numstat)
+	}
+	shown := stats[0]
+	if s.IgnoreWS {
+		shown = stats[1]
+	}
+	for i := range changes {
+		c := &changes[i]
+		if st, ok := shown[c.Path]; ok {
+			c.Added, c.Deleted = st[0], st[1]
+		}
+		c.WhitespaceOnly = isWhitespaceOnly(stats[0][c.Path], stats[1][c.Path])
+	}
+	if err := markGenerated(s.Repo, s.Head, changes); err != nil {
+		return nil, err
 	}
 	return changes, nil
 }

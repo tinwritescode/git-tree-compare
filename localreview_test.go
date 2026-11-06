@@ -201,3 +201,54 @@ func TestListRefs(t *testing.T) {
 		t.Fatalf("commits = %v", subjects)
 	}
 }
+
+func TestListLocalOffersTheCheckedOutBranchAndRecentCommits(t *testing.T) {
+	repo, git := branchRepo(t)
+	git("checkout", "-q", "feat")
+
+	local := ListLocal(repo)
+	if local.Branch == nil || *local.Branch != (LocalBranch{Name: "feat", Base: "main", Ahead: 1}) {
+		t.Fatalf("branch = %+v", local.Branch)
+	}
+	var subjects []string
+	for _, c := range local.Commits {
+		subjects = append(subjects, c.Subject)
+	}
+	if !reflect.DeepEqual(subjects, []string{"add feature", "first"}) {
+		t.Fatalf("commits = %v, want only the commits on HEAD", subjects)
+	}
+}
+
+func TestListLocalCapsCommitsAndSkipsTheDefaultBranch(t *testing.T) {
+	repo, git := branchRepo(t)
+	for i := 0; i < 6; i++ {
+		git("commit", "-q", "--allow-empty", "-m", "more")
+	}
+
+	local := ListLocal(repo)
+	if local.Branch != nil {
+		t.Fatalf("branch = %+v, want none on the default branch", local.Branch)
+	}
+	if len(local.Commits) != inboxCommits {
+		t.Fatalf("got %d commits, want %d", len(local.Commits), inboxCommits)
+	}
+}
+
+func TestListLocalSkipsABranchWithNothingNew(t *testing.T) {
+	repo, git := branchRepo(t)
+	git("checkout", "-q", "-b", "empty", "main")
+
+	local := ListLocal(repo)
+	if local.Branch != nil {
+		t.Fatalf("branch = %+v, want none when it adds no commits", local.Branch)
+	}
+}
+
+func TestListLocalInAnEmptyRepository(t *testing.T) {
+	repo := t.TempDir()
+	gitIn(t, repo)("init", "-q", "-b", "main")
+
+	if local := ListLocal(repo); local.Branch != nil || len(local.Commits) != 0 {
+		t.Fatalf("local = %+v", local)
+	}
+}
