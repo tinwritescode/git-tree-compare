@@ -138,8 +138,16 @@ export function SetViewed(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['SetViewed'](arg1, arg2, arg3, arg4);
 }
 
+export function StartAsk(arg1, arg2) {
+  return window['go']['main']['App']['StartAsk'](arg1, arg2);
+}
+
 export function StartBrief(arg1, arg2) {
   return window['go']['main']['App']['StartBrief'](arg1, arg2);
+}
+
+export function StartExplain(arg1, arg2) {
+  return window['go']['main']['App']['StartExplain'](arg1, arg2);
 }
 
 export function StartTerminal(arg1, arg2, arg3) {

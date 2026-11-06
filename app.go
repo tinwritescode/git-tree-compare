@@ -326,8 +326,27 @@ func (a *App) ClaudeStatus() ClaudeInfo {
 
 // StartBrief writes the brief of a review in the background. Its progress arrives as
 // claude:<taskID> events, ending with one result or one error.
-func (a *App) StartBrief(taskID string, req BriefRequest) error {
+func (a *App) StartBrief(taskID string, req ChangeRef) error {
 	task, err := briefTask(taskID, req)
+	if err != nil {
+		return err
+	}
+	return a.claude.start(task)
+}
+
+// StartExplain explains one hunk in the background, streamed as claude:<taskID> events.
+func (a *App) StartExplain(taskID string, req ExplainRequest) error {
+	task, err := explainTask(taskID, req)
+	if err != nil {
+		return err
+	}
+	return a.claude.start(task)
+}
+
+// StartAsk puts one question to the review's conversation with Claude, streamed as
+// claude:<taskID> events.
+func (a *App) StartAsk(taskID string, req AskRequest) error {
+	task, err := askTask(taskID, req)
 	if err != nil {
 		return err
 	}

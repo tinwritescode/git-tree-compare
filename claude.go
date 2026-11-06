@@ -33,6 +33,13 @@ const (
 	maxClaudeBudgetUSD = 20.0
 )
 
+// What each kind of task may spend, in US dollars. A question in Ask has its own budget.
+const (
+	briefBudgetUSD   = 1.0
+	explainBudgetUSD = 0.5
+	askBudgetUSD     = 1.0
+)
+
 // claudeReadTools are the only tools a task may give Claude: they read the checkout and change nothing.
 var claudeReadTools = []string{"Read", "Grep", "Glob"}
 
@@ -88,6 +95,7 @@ type claudeTask struct {
 	Repo      string // claude runs in a detached worktree of Repo at Head
 	Head      string
 	Cache     *cacheKey // where a finished answer is kept; nil runs every time
+	Refresh   bool      // ask again even when an answer is kept, and keep the new one
 }
 
 var (
@@ -153,14 +161,15 @@ func claudeArgs(t claudeTask) []string {
 	return append(args, "--", t.Prompt)
 }
 
-// cacheKey names a finished answer: the same question about the same commits gets the same answer.
-// Version changes when the prompt or schema does.
+// cacheKey names a finished answer: the same question about the same commits, put to the same
+// model, gets the same answer. Version changes when the prompt or schema does. Subject is the part
+// of the change a task is about, such as one hunk, or "" for the whole change.
 type cacheKey struct {
-	Repo, Base, Head, Kind, Version string
+	Repo, Base, Head, Kind, Version, Model, Subject string
 }
 
 func (k cacheKey) file() string {
-	sum := sha256.Sum256([]byte(strings.Join([]string{k.Repo, k.Base, k.Head, k.Kind, k.Version}, "\x00")))
+	sum := sha256.Sum256([]byte(strings.Join([]string{k.Repo, k.Base, k.Head, k.Kind, k.Version, k.Model, k.Subject}, "\x00")))
 	return k.Kind + "-" + hex.EncodeToString(sum[:16]) + ".json"
 }
 
@@ -223,7 +232,7 @@ func (r *claudeRunner) run(t claudeTask) {
 		r.emit(t.ID, errorEvent(err.Error()))
 		return
 	}
-	if ev, ok := r.readCache(t.Cache); ok {
+	if ev, ok := r.readCache(t.Cache); ok && !t.Refresh {
 		r.emit(t.ID, ev)
 		return
 	}

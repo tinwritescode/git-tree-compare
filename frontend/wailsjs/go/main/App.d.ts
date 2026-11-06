@@ -70,7 +70,11 @@ export function SetThreadResolved(arg1:string,arg2:string,arg3:boolean):Promise<
 
 export function SetViewed(arg1:string,arg2:string,arg3:Array<string>,arg4:boolean):Promise<void>;
 
-export function StartBrief(arg1:string,arg2:main.BriefRequest):Promise<void>;
+export function StartAsk(arg1:string,arg2:main.AskRequest):Promise<void>;
+
+export function StartBrief(arg1:string,arg2:main.ChangeRef):Promise<void>;
+
+export function StartExplain(arg1:string,arg2:main.ExplainRequest):Promise<void>;
 
 export function StartTerminal(arg1:string,arg2:number,arg3:number):Promise<void>;
 

@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'vitest';
-import {buildMarkdown, dropOldest, folderOf, inkShare, tickWeight} from './util';
+import {buildMarkdown, dropOldest, folderOf, inkShare, newUUID, tickWeight} from './util';
 
 describe('inkShare', () => {
     it('is empty for no lines and full at the top of the scale', () => {
@@ -63,5 +63,13 @@ describe('buildMarkdown', () => {
             '  - File: split this file',
             '',
         ].join('\n'));
+    });
+});
+
+describe('newUUID', () => {
+    it('makes a version 4 UUID the backend accepts as a session id, a new one each time', () => {
+        const id = newUUID();
+        expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+        expect(newUUID()).not.toBe(id);
     });
 });

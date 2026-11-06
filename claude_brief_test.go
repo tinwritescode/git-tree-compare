@@ -25,7 +25,7 @@ func TestUntrustedBlockCannotBeClosedFromInside(t *testing.T) {
 
 func TestBriefTaskReadsTheCheckoutAndIsCachedPerCommits(t *testing.T) {
 	base := strings.Repeat("1", 40)
-	req := BriefRequest{Repo: "/r", Base: base, Head: testHead, PR: 7, Title: "Fix", Model: "sonnet"}
+	req := ChangeRef{Repo: "/r", Base: base, Head: testHead, PR: 7, Title: "Fix", Model: "sonnet"}
 	task, err := briefTask("brief-7", req)
 	if err != nil {
 		t.Fatal(err)
@@ -36,9 +36,17 @@ func TestBriefTaskReadsTheCheckoutAndIsCachedPerCommits(t *testing.T) {
 	if !slices.Equal(task.Tools, []string{"Read", "Grep", "Glob"}) || task.Model != "sonnet" || task.Session.Mode != sessionNone {
 		t.Fatalf("task = %+v", task)
 	}
-	if task.Cache == nil || *task.Cache != (cacheKey{Repo: "/r", Base: base, Head: testHead, Kind: "brief", Version: promptVersion(briefPrompt, briefSchema, briefInputVersion)}) {
+	if task.Cache == nil || *task.Cache != (cacheKey{Repo: "/r", Base: base, Head: testHead, Kind: "brief", Version: promptVersion(briefPrompt, briefSchema, briefInputVersion), Model: "sonnet"}) {
 		t.Fatalf("cache = %+v", task.Cache)
 	}
+	if task.Refresh || task.BudgetUSD != briefBudgetUSD {
+		t.Fatalf("refresh %v, budget %v", task.Refresh, task.BudgetUSD)
+	}
+	req.Fresh = true
+	if again, _ := briefTask("brief-7", req); !again.Refresh {
+		t.Fatal("a fresh brief would come from the cache")
+	}
+	req.Fresh = false
 	if !json.Valid([]byte(task.Schema)) {
 		t.Fatal("the schema is not JSON")
 	}
@@ -54,7 +62,7 @@ func TestBriefInputForABranchFencesItsMessagesAndDiff(t *testing.T) {
 	repo, git := branchRepo(t)
 	base := git("merge-base", "main", "feat")
 	head := git("rev-parse", "feat")
-	task, err := briefTask("brief-local", BriefRequest{Repo: repo, Base: base, Head: head, Title: "feat into main", Model: defaultClaudeModel})
+	task, err := briefTask("brief-local", ChangeRef{Repo: repo, Base: base, Head: head, Title: "feat into main", Model: defaultClaudeModel})
 	if err != nil {
 		t.Fatal(err)
 	}

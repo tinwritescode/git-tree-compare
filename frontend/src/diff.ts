@@ -1,4 +1,5 @@
 // Parsing of git's unified diff text into lines and split-view rows.
+import type {Side} from './drafts';
 
 export type LineKind = 'ctx' | 'add' | 'del' | 'hunk' | 'meta';
 
@@ -151,3 +152,32 @@ export function diffRows(lines: Line[], split: boolean): DiffRow[] {
         ? {kind: 'hunk', text: line.text, hunk: ++hunk}
         : {kind: 'line', line, newNo: line.newNo}));
 }
+
+// hunkOfRow is the number of the hunk a drawn row sits in: the last hunk header at or above it.
+export function hunkOfRow(rows: DiffRow[], index: number): number {
+    for (let i = Math.min(index, rows.length - 1); i >= 0; i--) {
+        const row = rows[i];
+        if (row.kind === 'hunk') return row.hunk;
+    }
+    return 0;
+}
+
+// A hunk as git wrote it, from its @@ header on.
+export type Hunk = {header: string; text: string};
+
+// hunkFor finds the hunk that holds the focused line on its side, or else the hunk numbered index
+// (kept in range). Null when the diff has no hunks.
+export function hunkFor({text, focus, index}: {text: string; focus: {side: Side; line: number} | null; index: number}): Hunk | null {
+    const hunks: {header: string; lines: Line[]}[] = [];
+    for (const line of parseDiff(text)) {
+        if (line.kind === 'hunk') hunks.push({header: line.text, lines: []});
+        else hunks[hunks.length - 1]?.lines.push(line);
+    }
+    if (!hunks.length) return null;
+    const holds = (lines: Line[], at: {side: Side; line: number}) => lines.some(l => (at.side === 'LEFT' ? l.oldNo : l.newNo) === at.line);
+    const hunk = (focus && hunks.find(h => holds(h.lines, focus))) || hunks[Math.min(Math.max(index, 0), hunks.length - 1)];
+    return {header: hunk.header, text: [hunk.header, ...hunk.lines.map(l => SIGN[l.kind] + l.text)].join('\n')};
+}
+
+// SIGN puts back the mark parseDiff takes off each line; a meta line keeps its own.
+const SIGN: Record<LineKind, string> = {ctx: ' ', add: '+', del: '-', hunk: '', meta: ''};

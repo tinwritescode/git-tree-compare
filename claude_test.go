@@ -85,7 +85,7 @@ func TestValidateTaskRejectsWhatCouldReachClaudeAsAFlag(t *testing.T) {
 }
 
 func TestCacheKeyChangesWithEachPart(t *testing.T) {
-	base := cacheKey{Repo: "/r", Base: testHead, Head: testHead, Kind: "brief", Version: "v1"}
+	base := cacheKey{Repo: "/r", Base: testHead, Head: testHead, Kind: "brief", Version: "v1", Model: "opus", Subject: "a.go"}
 	if base.file() != base.file() {
 		t.Fatal("the key is not stable")
 	}
@@ -95,6 +95,8 @@ func TestCacheKeyChangesWithEachPart(t *testing.T) {
 		func(k *cacheKey) { k.Head = strings.Repeat("2", 40) },
 		func(k *cacheKey) { k.Kind = "findings" },
 		func(k *cacheKey) { k.Version = "v2" },
+		func(k *cacheKey) { k.Model = "sonnet" },
+		func(k *cacheKey) { k.Subject = "b.go" },
 	}
 	for i, change := range changes {
 		k := base
@@ -212,6 +214,26 @@ func TestRunnerRunsClaudeInAWorktreeAtHeadAndCachesTheResult(t *testing.T) {
 	}
 	if runs := readLog(t, log+".count"); runs != "run" {
 		t.Fatalf("claude ran again: %q", runs)
+	}
+}
+
+// Re-running asks Claude again even when an answer is kept, and keeps the new answer.
+func TestRunnerRefreshSkipsTheKeptAnswerAndKeepsTheNewOne(t *testing.T) {
+	log := fakeClaude(t, "brief.jsonl")
+	task, repo := repoTask(t)
+	task.Cache = &cacheKey{Repo: repo, Head: task.Head, Kind: "brief", Version: "v1"}
+	rec := &recorder{}
+	r := newClaudeRunner(rec.emit, t.TempDir(), t.TempDir())
+	r.run(task)
+	task.Refresh = true
+	r.run(task)
+	task.Refresh = false
+	r.run(task)
+	if runs := readLog(t, log+".count"); runs != "run\nrun" {
+		t.Fatalf("runs = %q", runs)
+	}
+	if kinds(rec.all()) != "tool,tool,result,tool,tool,result,result" {
+		t.Fatalf("events = %+v", rec.all())
 	}
 }
 

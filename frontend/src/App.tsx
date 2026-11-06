@@ -29,17 +29,21 @@ import {
     ReviewCommit,
     SetThreadResolved,
     SetViewed,
+    StartAsk,
     StartBrief,
+    StartExplain,
     SubmitReview,
     TakePendingRepo,
 } from '../wailsjs/go/main/App';
 import {BrowserOpenURL, EventsOn} from '../wailsjs/runtime/runtime';
 import {BriefCard} from './brief';
 import {
-    briefChip, type BriefRun, briefRunStep, briefState, CLAUDE_TASKS, type ClaudeModels, type ClaudeTaskKind, modelChoices, modelFor, parseClaudeEvent,
-    parseClaudeModels, parseRepoList, type RiskMark, riskMarks, TASK_LABEL,
+    briefChip, type BriefRun, briefRunStep, briefState, CLAUDE_TASKS, type ClaudeEvent, type ClaudeModels, type ClaudeTaskKind, modelChoices, modelFor,
+    parseClaudeEvent, parseClaudeModels, parseRepoList, type RiskMark, riskMarks, TASK_LABEL,
 } from './claude';
-import {diffRows, type DiffRow, parseDiff, type Line, type SplitRow} from './diff';
+import {askKey, askTurn, type Conversation, conversationStep, emptyConversation, startTurn, type Turn, turnStep} from './claude-chat';
+import {ClaudePanel} from './claude-panel';
+import {diffRows, type DiffRow, hunkFor, hunkOfRow, parseDiff, type Line, type SplitRow} from './diff';
 import {highlight} from './highlight';
 import {emptyQuery, SearchDialog, type SearchHit, type SearchQuery} from './search-dialog';
 import {paint, type Token} from './syntax';
@@ -63,7 +67,7 @@ import {
 import {buildTree, FileChange, SortMode, TreeNode} from './tree';
 import {groupByState, NOISE_LABEL, noiseOf, type NoiseReason, parseTreeViews, SECTION_TITLE, type Section, type SectionKind, type TreeViews} from './triage';
 import {main} from '../wailsjs/go/models';
-import {basename, buildMarkdown, dropOldest, folderOf} from './util';
+import {basename, buildMarkdown, dropOldest, folderOf, newUUID} from './util';
 import {Button} from './ui/button';
 import {Kbd} from './ui/kbd';
 import {RepoPicker} from './repo-picker';
@@ -117,6 +121,25 @@ function newDraftId(): string {
 type LineFocus = {path: string; side: Side; line: number};
 
 type OpenRequest = {repo?: string; error?: string; review?: main.LocalReview; link?: main.OpenLink};
+
+// The Claude panel on the right: an explanation of one hunk, or the review's Ask conversation.
+type ClaudePanelState = {kind: 'explain'; turn: Turn} | {kind: 'ask'};
+
+// runClaude listens to a task's events, then starts it, and stops listening once it ends.
+// A task that fails to start ends with an error event.
+function runClaude({taskId, start, onEvent}: {taskId: string; start: () => Promise<void>; onEvent: (event: ClaudeEvent) => void}): () => void {
+    const off = EventsOn(`claude:${taskId}`, (payload: unknown) => {
+        const event = parseClaudeEvent(payload);
+        if (!event) return;
+        onEvent(event);
+        if (event.kind === 'result' || event.kind === 'error') off();
+    });
+    start().catch(e => {
+        off();
+        onEvent({kind: 'error', message: String(e)});
+    });
+    return off;
+}
 
 // What is under review: an open pull request, or a commit or branch read from git alone.
 type Subject = {kind: 'pr'; number: number} | {kind: 'local'; review: main.LocalReview};
@@ -189,6 +212,10 @@ function App() {
     const [claudeModels, setClaudeModels] = useState<ClaudeModels>(() => parseClaudeModels(readStore<unknown>(CLAUDE_MODELS_KEY, {})));
     const [briefRun, setBriefRun] = useState<BriefRun>({kind: 'off'});
     const [briefOpen, setBriefOpen] = useState(true);
+    const [briefRerun, setBriefRerun] = useState<{head: string; n: number} | null>(null); // a head whose brief skips the kept one
+    const [claudePanel, setClaudePanel] = useState<ClaudePanelState | null>(null);
+    // Ask conversations by askKey, kept while the app runs, so a review opened again carries on.
+    const [conversations, setConversations] = useState<Record<string, Conversation>>({});
     const [picking, setPicking] = useState(false);
     const [recent, setRecent] = useState<string[]>(() => readStore<string[]>(RECENT_KEY, []));
     const [pickError, setPickError] = useState('');
@@ -230,6 +257,8 @@ function App() {
     const aiOn = !!claudeInfo?.installed && !noAIRepos.includes(repo);
     const briefModel = modelFor({models: claudeModels, kind: 'brief', fallback: claudeInfo?.defaultModel ?? ''});
     const briefWanted = aiOn && (pr !== null || local?.kind === 'branch');
+    const conversationKey = commits ? askKey({repo, pr: pr?.number ?? null, base: commits.base, head: commits.head}) : null;
+    const conversation = (conversationKey && conversations[conversationKey]) || emptyConversation;
     const changedPaths = useMemo(() => new Set(changes.map(c => c.path)), [changes]);
     const brief = useMemo(() => briefState({run: briefRun, paths: changedPaths}), [briefRun, changedPaths]);
     const shownBrief = brief.kind === 'ready' ? brief.brief : null;
@@ -580,6 +609,7 @@ function App() {
     }
 
     function closeReview() {
+        closeClaudePanel();
         setSubject(null);
         setTarget(null);
         setSearchQuery(emptyQuery);
@@ -828,18 +858,16 @@ function App() {
         }
         const id = `brief-${newDraftId()}`;
         setBriefRun({kind: 'running', reading: null});
-        const off = EventsOn(`claude:${id}`, (payload: unknown) => {
-            const event = parseClaudeEvent(payload);
-            if (event) setBriefRun(run => briefRunStep(run, event));
+        const off = runClaude({
+            taskId: id,
+            start: () => StartBrief(id, changeRef({kind: 'brief', commits, fresh: briefRerun?.head === commits.head})),
+            onEvent: event => setBriefRun(run => briefRunStep(run, event)),
         });
-        StartBrief(id, main.BriefRequest.createFrom({
-            repo, base: commits.base, head: commits.head, pr: pr?.number ?? 0, title: pr?.title ?? local?.title ?? '', model: briefModel,
-        })).catch(e => setBriefRun({kind: 'error', message: String(e)}));
         return () => {
             off();
             CancelClaude(id).finally(() => ReleaseClaude(repo)).catch(() => {});
         };
-    }, [briefWanted, repo, commits?.base, commits?.head, pr?.number, briefModel]);
+    }, [briefWanted, repo, commits?.base, commits?.head, pr?.number, briefModel, briefRerun]);
 
     // With nothing selected, the first file in the order on screen opens, before the frame is drawn.
     useLayoutEffect(() => {
@@ -976,6 +1004,10 @@ function App() {
                 return;
             }
             if (!reviewing) return;
+            if (e.key === 'Escape' && claudePanel) {
+                closeClaudePanel();
+                return;
+            }
 
             switch (e.key) {
                 case '/':
@@ -1030,6 +1062,15 @@ function App() {
                     return;
                 case 'B':
                     if (brief.kind !== 'off') setBriefOpen(v => !v);
+                    return;
+                case 'e':
+                    explainHunk();
+                    return;
+                case 'a':
+                    if (aiOn) {
+                        e.preventDefault(); // the key would land in the question box as it takes focus
+                        openAsk();
+                    }
                     return;
                 case '[':
                 case ']':
@@ -1215,6 +1256,77 @@ function App() {
         setNoAIRepos(list => (list.includes(repo) ? list.filter(r => r !== repo) : [...list, repo]));
     }
 
+    // changeRef names the change under review for a Claude task, with the model chosen for its kind.
+    function changeRef({kind, commits, fresh}: {kind: ClaudeTaskKind; commits: {base: string; head: string}; fresh: boolean}): main.ChangeRef {
+        return main.ChangeRef.createFrom({
+            repo, base: commits.base, head: commits.head, pr: pr?.number ?? 0, title: pr?.title ?? local?.title ?? '',
+            model: modelFor({models: claudeModels, kind, fallback: claudeInfo?.defaultModel ?? ''}), fresh,
+        });
+    }
+
+    // Writes the brief again for this head, skipping the one kept on disk.
+    function rerunBrief() {
+        if (commits) setBriefRerun(r => ({head: commits.head, n: (r?.n ?? 0) + 1}));
+    }
+
+    // e: Claude explains the hunk around the focused line, or the first hunk in view.
+    function explainHunk() {
+        if (!aiOn || !commits || !selected || diffPath !== selected.path) return;
+        const focus = focusLine?.path === selected.path ? focusLine : null;
+        const hunk = hunkFor({text: diff, focus, index: diffView.current?.hunkInView() ?? 0});
+        if (!hunk) {
+            showFlash('This file has no hunk to explain.');
+            return;
+        }
+        stopClaude();
+        const taskId = `explain-${newDraftId()}`;
+        const path = selected.path;
+        setClaudePanel({kind: 'explain', turn: startTurn({taskId, ask: `${path} ${hunk.header}`})});
+        runClaude({
+            taskId,
+            start: () => StartExplain(taskId, main.ExplainRequest.createFrom({change: changeRef({kind: 'explain', commits, fresh: false}), path, hunk: hunk.text})),
+            onEvent: event => setClaudePanel(p => (p?.kind === 'explain' && p.turn.taskId === taskId ? {kind: 'explain', turn: turnStep(p.turn, event)} : p)),
+        });
+    }
+
+    // a: opens the Ask panel for this review.
+    function openAsk() {
+        if (!aiOn || !commits) return;
+        if (claudePanel?.kind !== 'ask') stopClaude();
+        setClaudePanel({kind: 'ask'});
+    }
+
+    function askClaude(question: string) {
+        if (!commits || !conversationKey) return;
+        const key = conversationKey;
+        const taskId = `ask-${newDraftId()}`;
+        const asked = askTurn({conversation, taskId, question, newSessionId: newUUID});
+        if (!asked) return;
+        setConversations(all => ({...all, [key]: asked.conversation}));
+        runClaude({
+            taskId,
+            start: () => StartAsk(taskId, main.AskRequest.createFrom({
+                change: changeRef({kind: 'ask', commits, fresh: false}), session: asked.send.session, resume: asked.send.resume, question,
+            })),
+            onEvent: event => setConversations(all => ({
+                ...all, [key]: conversationStep({conversation: all[key] ?? emptyConversation, taskId, event}),
+            })),
+        });
+    }
+
+    // stopClaude stops the answer the panel is waiting for, if any.
+    function stopClaude() {
+        const running = claudePanel?.kind === 'explain' ? [claudePanel.turn] : claudePanel?.kind === 'ask' ? conversation.turns : [];
+        for (const turn of running) {
+            if (turn.status.kind === 'running') CancelClaude(turn.taskId).catch(() => {});
+        }
+    }
+
+    function closeClaudePanel() {
+        stopClaude();
+        setClaudePanel(null);
+    }
+
     function setClaudeModel(kind: ClaudeTaskKind, model: string) {
         setClaudeModels(models => ({...models, [kind]: model}));
         showFlash(`${TASK_LABEL[kind]} uses ${model} from now on.`);
@@ -1255,6 +1367,11 @@ function App() {
         ] : []),
         ...(brief.kind !== 'off' ? [
             {id: 'brief', label: briefOpen ? 'Hide the Claude brief' : 'Show the Claude brief', hint: '⇧B', run: () => setBriefOpen(v => !v)},
+            {id: 'rebrief', label: 'Re-run Claude brief', run: rerunBrief},
+        ] : []),
+        ...(aiOn && reviewing ? [
+            {id: 'explain', label: 'Explain this hunk with Claude', hint: 'e', run: explainHunk},
+            {id: 'ask', label: 'Ask Claude about this change', hint: 'a', run: openAsk},
         ] : []),
         ...(aiOn ? [{id: 'model', label: 'Claude model…', run: () => {
             setPaletteMode('model');
@@ -1613,6 +1730,17 @@ function App() {
                                 />
                                 : <Empty title="No file selected" hint="Choose a file in the tree to see its diff."/>}
                         </main>
+                        {claudePanel?.kind === 'explain' && (
+                            <ClaudePanel title="explain" turns={[claudePanel.turn]} ask={null} onClose={closeClaudePanel}/>
+                        )}
+                        {claudePanel?.kind === 'ask' && (
+                            <ClaudePanel
+                                title="ask"
+                                turns={conversation.turns}
+                                ask={{onSend: askClaude, busy: conversation.turns.some(t => t.status.kind === 'running')}}
+                                onClose={closeClaudePanel}
+                            />
+                        )}
                     </div>
                 </>
             )}
@@ -1925,8 +2053,8 @@ function DiffPanel(props: {
     );
 }
 
-// DiffHandle lets the app move through the hunks of the diff on screen.
-export type DiffHandle = {moveHunk: (step: number) => void};
+// DiffHandle lets the app move through the hunks of the diff on screen, and asks which one is in view.
+export type DiffHandle = {moveHunk: (step: number) => void; hunkInView: () => number};
 
 const ROW_HEIGHT = 24; // a diff line, matching .diff-body's line-height; only rows with threads are measured
 const THREAD_HEIGHT = 96; // a guess for a row's review threads until the row is measured
@@ -2037,6 +2165,12 @@ const DiffView = memo(function DiffView({
             if (!hunks.length) return;
             hunkAt.current = Math.min(Math.max(hunkAt.current + step, 0), hunks.length - 1);
             virtualizer.scrollToIndex(hunks[hunkAt.current], {align: 'start', behavior: 'smooth'});
+        },
+        // The hunk of the first row below the sticky header.
+        hunkInView() {
+            const top = (virtualizer.scrollOffset ?? 0) + HEADER_HEIGHT;
+            const first = virtualizer.getVirtualItems().find(item => item.end > top);
+            return hunkOfRow(rows, first?.index ?? 0);
         },
     }), [rows, virtualizer]);
 
@@ -2257,10 +2391,12 @@ const SHORTCUT_GROUPS: {title: string; rows: [string, string][]}[] = [
         ['x', 'Mark reviewed here and on GitHub, then go to the next file'],
         ['⌘-click', 'Add or remove a file from the selection'],
         ['⇧-click', 'Select a range of files'],
-        ['Esc', 'Clear the selection, or the focused line'],
+        ['Esc', 'Close the Claude panel (stopping Claude), clear the selection, or the focused line'],
         ['c', 'Comment on the line you clicked, or on the file'],
         ['⌘↵', 'Finish review; in the Finish sheet, submit'],
         ['⇧B', "Show or hide Claude's brief"],
+        ['e', 'Claude explains the hunk around the line you clicked, or the first hunk in view'],
+        ['a', 'Ask Claude about this change'],
     ]},
     {title: 'Diff', rows: [
         ['[ ]', 'Previous or next hunk'],

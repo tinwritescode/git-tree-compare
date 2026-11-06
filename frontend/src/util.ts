@@ -32,6 +32,16 @@ export function basename(path: string): string {
     return path.split(/[\\/]/).filter(Boolean).pop() ?? path;
 }
 
+// newUUID makes a random version 4 UUID. crypto.randomUUID needs a secure context, which the
+// app's page may not be, so it is built from random bytes.
+export function newUUID(): string {
+    const b = crypto.getRandomValues(new Uint8Array(16));
+    b[6] = (b[6] & 0x0f) | 0x40;
+    b[8] = (b[8] & 0x3f) | 0x80;
+    const hex = Array.from(b, x => x.toString(16).padStart(2, '0')).join('');
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
 // folderOf returns the folders of a path with a trailing slash, or '' for a file at the root.
 export function folderOf(path: string): string {
     return path.slice(0, path.lastIndexOf('/') + 1);

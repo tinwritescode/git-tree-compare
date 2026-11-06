@@ -151,9 +151,9 @@ export function riskMarks(brief: Brief): Record<string, RiskMark> {
 }
 
 // Model per kind of task, chosen in ⌘K. The default comes from the backend.
-export const CLAUDE_TASKS = ['brief'] as const;
+export const CLAUDE_TASKS = ['brief', 'explain', 'ask'] as const;
 export type ClaudeTaskKind = (typeof CLAUDE_TASKS)[number];
-export const TASK_LABEL: Record<ClaudeTaskKind, string> = {brief: 'Brief'};
+export const TASK_LABEL: Record<ClaudeTaskKind, string> = {brief: 'Brief', explain: 'Explain', ask: 'Ask'};
 export type ClaudeModels = Partial<Record<ClaudeTaskKind, string>>;
 
 // Same rule as the backend: a model name never starts with a dash, so it cannot pass as a flag.

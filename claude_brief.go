@@ -18,7 +18,6 @@ var briefPrompt string
 var briefSchema string
 
 const (
-	briefBudgetUSD = 3.0
 	// briefInputVersion changes when what goes on stdin changes, to miss briefs made from the old input.
 	briefInputVersion = "1"
 	// maxBriefDiff caps the diff sent on stdin. Claude reads the rest from the checkout.
@@ -26,18 +25,20 @@ const (
 	maxBriefText = 20_000
 )
 
-// BriefRequest asks for the brief of a pull request or a local branch.
-type BriefRequest struct {
+// ChangeRef names the change a Claude task reads (a pull request or a local review) and the
+// model to read it with.
+type ChangeRef struct {
 	Repo  string `json:"repo"`
 	Base  string `json:"base"`
 	Head  string `json:"head"`
-	PR    int    `json:"pr"`    // the pull request's number, or 0 for a local branch
+	PR    int    `json:"pr"`    // the pull request's number, or 0 for a local review
 	Title string `json:"title"` // what the review is called on screen
 	Model string `json:"model"`
+	Fresh bool   `json:"fresh"` // ask Claude again instead of using a kept answer
 }
 
-// briefTask is the brief as a task for the runner. It reads the checkout and is kept per commits.
-func briefTask(id string, req BriefRequest) (claudeTask, error) {
+// briefTask is the brief as a task for the runner. It reads the checkout and is kept per commits and model.
+func briefTask(id string, req ChangeRef) (claudeTask, error) {
 	if !commitID.MatchString(req.Base) {
 		return claudeTask{}, fmt.Errorf("%q is not a commit id", req.Base)
 	}
@@ -46,7 +47,7 @@ func briefTask(id string, req BriefRequest) (claudeTask, error) {
 		Kind:      "brief",
 		Prompt:    briefPrompt,
 		Schema:    briefSchema,
-		Input:     func() (string, error) { return briefInput(req) },
+		Input:     func() (string, error) { return changeInput(req) },
 		Model:     req.Model,
 		BudgetUSD: briefBudgetUSD,
 		Tools:     claudeReadTools,
@@ -54,13 +55,14 @@ func briefTask(id string, req BriefRequest) (claudeTask, error) {
 		Head:      req.Head,
 		Cache: &cacheKey{
 			Repo: req.Repo, Base: req.Base, Head: req.Head, Kind: "brief",
-			Version: promptVersion(briefPrompt, briefSchema, briefInputVersion),
+			Version: promptVersion(briefPrompt, briefSchema, briefInputVersion), Model: req.Model,
 		},
+		Refresh: req.Fresh,
 	}, nil
 }
 
-// briefInput is what Claude reads on stdin: the description and the diff, each fenced as untrusted.
-func briefInput(req BriefRequest) (string, error) {
+// changeInput is what Claude reads on stdin: the description and the diff, each fenced as untrusted.
+func changeInput(req ChangeRef) (string, error) {
 	diff, err := scopeDiff(Scope{Repo: req.Repo, Base: req.Base, Head: req.Head}, nil, "")
 	if err != nil {
 		return "", err
@@ -71,7 +73,7 @@ func briefInput(req BriefRequest) (string, error) {
 
 // describeChange is the pull request's title and body, or a branch's commit messages. Without
 // them the brief still works from the diff, so a failure here leaves just the title.
-func describeChange(req BriefRequest) string {
+func describeChange(req ChangeRef) string {
 	if req.PR > 0 {
 		out, err := runGH(req.Repo, "pr", "view", strconv.Itoa(req.PR), "--json", "title,body")
 		var pr struct {

@@ -108,8 +108,8 @@ describe('riskMarks', () => {
 
 describe('model settings', () => {
     it('keeps a chosen model per task and falls back to the default', () => {
-        const models = parseClaudeModels({brief: 'sonnet', findings: 'haiku', other: 3});
-        expect(models).toEqual({brief: 'sonnet'});
+        const models = parseClaudeModels({brief: 'sonnet', ask: 'haiku', findings: 'haiku', other: 3});
+        expect(models).toEqual({brief: 'sonnet', ask: 'haiku'});
         expect(modelFor({models, kind: 'brief', fallback: 'claude-opus-5-5'})).toBe('sonnet');
         expect(modelFor({models: {}, kind: 'brief', fallback: 'claude-opus-5-5'})).toBe('claude-opus-5-5');
     });
