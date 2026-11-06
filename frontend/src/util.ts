@@ -1,4 +1,5 @@
 // Small helpers: fuzzy matching, shell quoting, and the Markdown summary.
+import type {Draft} from './drafts';
 
 // fuzzyScore returns -1 when query is not a subsequence of text. Lower is better.
 export function fuzzyScore(query: string, text: string): number {
@@ -66,9 +67,10 @@ export interface SummaryInput {
     files: {path: string; status: string; added: number; deleted: number; oldPath?: string}[];
     reviewed: Record<string, string>;
     notes: Record<string, string>;
+    drafts: Draft[];
 }
 
-// buildMarkdown writes the changed files, review state and notes as Markdown,
+// buildMarkdown writes the changed files, review state, notes and draft comments as Markdown,
 // ready to paste into a pull request description.
 export function buildMarkdown(input: SummaryInput): string {
     const done = input.files.filter(f => input.reviewed[f.path]).length;
@@ -83,11 +85,25 @@ export function buildMarkdown(input: SummaryInput): string {
         const rename = f.oldPath ? ` (from ${f.oldPath})` : '';
         lines.push(`- [${mark}] \`${f.path}\`${rename} (${f.status}, +${f.added} −${f.deleted})`);
         const note = input.notes[f.path]?.trim();
-        if (note) {
-            lines.push(`  - ${note.replace(/\n/g, '\n    ')}`);
+        const drafts = input.drafts.filter(d => d.path === f.path).map(d => `${draftPlace(d)}: ${d.body.trim()}`);
+        for (const item of note ? [note, ...drafts] : drafts) {
+            lines.push(`  - ${item.replace(/\n/g, '\n    ')}`);
         }
     }
     return lines.join('\n') + '\n';
+}
+
+function draftPlace(d: Draft): string {
+    switch (d.kind) {
+        case 'line':
+            return d.side === 'LEFT' ? `Old line ${d.line}` : `Line ${d.line}`;
+        case 'file':
+            return 'File';
+        default: {
+            const _exhaustive: never = d;
+            return _exhaustive;
+        }
+    }
 }
 
 // dropOldest removes the earliest-added keys until map holds at most size entries.

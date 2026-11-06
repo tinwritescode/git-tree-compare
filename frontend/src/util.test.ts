@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'vitest';
-import {dropOldest, folderOf, inkShare, tickWeight} from './util';
+import {buildMarkdown, dropOldest, folderOf, inkShare, tickWeight} from './util';
 
 describe('inkShare', () => {
     it('is empty for no lines and full at the top of the scale', () => {
@@ -33,5 +33,35 @@ describe('folderOf', () => {
     it('keeps the folders with their slash, and nothing for a file at the root', () => {
         expect(folderOf('api/v1/limit.go')).toBe('api/v1/');
         expect(folderOf('go.mod')).toBe('');
+    });
+});
+
+describe('buildMarkdown', () => {
+    it('lists each file with its note and draft comments under it', () => {
+        const md = buildMarkdown({
+            title: 'Fix the cache',
+            files: [{path: 'a.go', status: 'M', added: 2, deleted: 1}, {path: 'b.go', status: 'A', added: 5, deleted: 0}],
+            reviewed: {'a.go': 'reviewed'},
+            notes: {'a.go': 'looks fine'},
+            drafts: [
+                {kind: 'line', id: '1', path: 'a.go', line: 12, side: 'RIGHT', body: 'rename this'},
+                {kind: 'line', id: '2', path: 'a.go', line: 3, side: 'LEFT', body: 'why remove?\nit was used'},
+                {kind: 'file', id: '3', path: 'b.go', body: 'split this file'},
+            ],
+        });
+        expect(md).toBe([
+            '## Fix the cache',
+            '',
+            '2 files, 1 reviewed.',
+            '',
+            '- [x] `a.go` (M, +2 −1)',
+            '  - looks fine',
+            '  - Line 12: rename this',
+            '  - Old line 3: why remove?',
+            '    it was used',
+            '- [ ] `b.go` (A, +5 −0)',
+            '  - File: split this file',
+            '',
+        ].join('\n'));
     });
 });

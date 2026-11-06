@@ -19,10 +19,13 @@ import {
     PRComments,
     PRViewedStates,
     PrepareReview,
+    ReplyToThread,
     ResolveRepo,
     ReviewBranch,
     ReviewCommit,
+    SetThreadResolved,
     SetViewed,
+    SubmitReview,
     TakePendingRepo,
 } from '../wailsjs/go/main/App';
 import {BrowserOpenURL, EventsOn} from '../wailsjs/runtime/runtime';
@@ -31,7 +34,11 @@ import {highlight} from './highlight';
 import {emptyQuery, SearchDialog, type SearchHit, type SearchQuery} from './search-dialog';
 import {paint, type Token} from './syntax';
 import {EditorMenu} from './editor-menu';
-import {Command, CommandPalette, CommandPanel, CommentBody, CommentsPanel, FileMenu, PRDiscussion, PRThread, QuickOpen, UpdateBanner} from './panels';
+import {Command, CommandPalette, CommandPanel, CommentBody, CommentsPanel, FileMenu, PRDiscussion, PRThread, QuickOpen, ThreadActions, type ThreadControls, UpdateBanner} from './panels';
+import {
+    addDraft, checkLineTarget, deleteDraft, type Draft, draftCounts, editDraft, focusFor, parseDrafts, removeDrafts, rowTargets, type Side, toReviewDrafts, type Verdict,
+} from './drafts';
+import {type DraftControls, DraftStack, FinishSheet} from './finish';
 import {type InboxRow, type LocalWork} from './inbox';
 import {PR, PRList, ReviewRuler} from './prs';
 import {RefPicker, type RefMode} from './ref-picker';
@@ -44,7 +51,7 @@ import {
 } from './since';
 import {buildTree, FileChange, SortMode, TreeNode} from './tree';
 import {groupByState, NOISE_LABEL, noiseOf, type NoiseReason, parseTreeViews, SECTION_TITLE, type Section, type SectionKind, type TreeViews} from './triage';
-import type {main} from '../wailsjs/go/models';
+import {main} from '../wailsjs/go/models';
 import {basename, buildMarkdown, dropOldest, folderOf} from './util';
 import {Button} from './ui/button';
 import {Kbd} from './ui/kbd';
@@ -84,6 +91,19 @@ const reviewKey = (repo: string, number: number) => `git-tree-compare:review:${r
 // The head each file of a pull request was marked reviewed at, for "Since my review".
 const reviewedAtKey = (repo: string, number: number) => `git-tree-compare:reviewedAt:${repo}#${number}`;
 const localReviewKey = (repo: string, r: main.LocalReview) => `git-tree-compare:review:${repo}@${r.base}..${r.head}`;
+
+// The draft comments of a review are saved next to its record, so they survive a restart.
+const draftsKeyOf = (reviewStoreKey: string) => `${reviewStoreKey}:drafts`;
+
+// newDraftId names a draft so it can be edited, deleted, and dropped once posted.
+function newDraftId(): string {
+    return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+// A diff line chosen with a click, where c drafts a line comment.
+type LineFocus = {path: string; side: Side; line: number};
+// What the draft editor is writing: a new comment on a line or a file, or a saved draft.
+type Composer = {kind: 'line'; path: string; side: Side; line: number} | {kind: 'file'; path: string} | {kind: 'edit'; id: string};
 
 type OpenRequest = {repo?: string; error?: string; review?: main.LocalReview; link?: main.OpenLink};
 
@@ -136,6 +156,12 @@ function App() {
     const [discussion, setDiscussion] = useState<PRDiscussion | null>(null); // review comments on the open PR
     const [commentsOpen, setCommentsOpen] = useState(false);
     const [commentsLoading, setCommentsLoading] = useState(false);
+    const [drafts, setDrafts] = useState<Draft[]>([]); // the pending review, posted when the review is finished
+    const [focusLine, setFocusLine] = useState<LineFocus | null>(null);
+    const [composer, setComposer] = useState<Composer | null>(null);
+    const [finishOpen, setFinishOpen] = useState(false);
+    const [verdict, setVerdict] = useState<Verdict>('COMMENT');
+    const [summary, setSummary] = useState(''); // the Finish sheet's summary, kept while the sheet is closed
     const [update, setUpdate] = useState<main.UpdateInfo | null>(null); // a newer release, if one exists
     const [installing, setInstalling] = useState(false);
     const [quickOpen, setQuickOpen] = useState(false);
@@ -156,6 +182,7 @@ function App() {
 
     // Values read inside effects and handlers, without re-running them.
     const recordRef = useRef<ReviewRecord>(emptyRecord);
+    const draftsRef = useRef<{key: string; drafts: Draft[]} | null>(null); // the open review's drafts, and where they are saved
     const owner = useRef<{repo: string; id: string; key: string} | null>(null); // whose review recordRef holds
     const flushing = useRef(false); // one writer to GitHub at a time, so toggles land in order
     const writes = useRef(0); // counts accepted writes, to drop reads that started before them
@@ -209,6 +236,9 @@ function App() {
         return counts;
     }, [discussion]);
     const unresolvedCount = Object.values(commentCounts).reduce((sum, n) => sum + n, 0);
+    const draftCountByPath = useMemo(() => draftCounts(drafts), [drafts]);
+    const fileDrafts = useMemo(() => (selected ? drafts.filter(d => d.path === selected.path) : []), [drafts, selected]);
+    const draftLabel = pr ? 'Draft · posts when you finish' : 'Draft · goes in the summary';
     const updateBanner = update && (
         <UpdateBanner
             update={update}
@@ -294,6 +324,121 @@ function App() {
         writeStore(`git-tree-compare:notes:${repo}`, next);
     }
 
+    // changeDrafts applies change to the drafts saved under key and saves the result. The open
+    // review's drafts are read from memory, so they are kept even when storage is unavailable.
+    function changeDrafts(key: string, change: (drafts: Draft[]) => Draft[]) {
+        const open = draftsRef.current?.key === key;
+        const next = change(open && draftsRef.current ? draftsRef.current.drafts : parseDrafts(readStore<unknown>(key, null)));
+        writeStore(key, next);
+        if (open) {
+            draftsRef.current = {key, drafts: next};
+            setDrafts(next);
+        }
+    }
+
+    // c: a comment on the focused line, or on the file when no line of it is focused.
+    function startComment() {
+        if (!selected) return;
+        const path = selected.path;
+        if (focusLine?.path !== path) {
+            setComposer({kind: 'file', path});
+            return;
+        }
+        if (pr) {
+            const lines = parseDiff(diffPath === path ? diff : '');
+            const check = checkLineTarget({lines, range: range.kind, side: focusLine.side, line: focusLine.line});
+            if (check.kind === 'invalid') {
+                showFlash(check.reason);
+                return;
+            }
+        }
+        setComposer({kind: 'line', path, side: focusLine.side, line: focusLine.line});
+    }
+
+    function saveComposer(body: string) {
+        const key = draftsRef.current?.key;
+        if (!key || !composer) return;
+        const c = composer;
+        switch (c.kind) {
+            case 'line':
+                changeDrafts(key, d => addDraft(d, {kind: 'line', id: newDraftId(), path: c.path, line: c.line, side: c.side, body}));
+                break;
+            case 'file':
+                changeDrafts(key, d => addDraft(d, {kind: 'file', id: newDraftId(), path: c.path, body}));
+                break;
+            case 'edit':
+                changeDrafts(key, d => editDraft(d, {id: c.id, body}));
+                break;
+            default: {
+                const _exhaustive: never = c;
+                return _exhaustive;
+            }
+        }
+        setComposer(null);
+    }
+
+    function removeDraft(id: string) {
+        const key = draftsRef.current?.key;
+        if (key) changeDrafts(key, d => deleteDraft(d, id));
+        setComposer(c => (c?.kind === 'edit' && c.id === id ? null : c));
+    }
+
+    // Moves the file's note into the pending review as a file comment.
+    function addNoteToReview(path: string) {
+        const key = draftsRef.current?.key;
+        const note = notes[path]?.trim();
+        if (!key || !note) return;
+        changeDrafts(key, d => addDraft(d, {kind: 'file', id: newDraftId(), path, body: note}));
+        updateNote(path, '');
+        setNoteOpen(false);
+        showFlash(pr ? 'The note is now a draft comment. It posts when you finish.' : 'The note is now a draft comment.');
+    }
+
+    // Posts the verdict, summary and every draft in one request. Drafts go only once GitHub has
+    // them; a failure throws to the Finish sheet, which shows it and keeps everything.
+    async function submitReview() {
+        const owned = draftsRef.current;
+        if (!pr || !commits || !owned) return;
+        const posted = owned.drafts;
+        await SubmitReview(repo, pr.url, main.ReviewSubmission.createFrom({
+            head: commits.head, event: verdict, body: summary, drafts: toReviewDrafts(posted),
+        }));
+        changeDrafts(owned.key, d => removeDrafts(d, posted.map(p => p.id)));
+        setSummary('');
+        setVerdict('COMMENT');
+        setFinishOpen(false);
+        showFlash(`Review posted on #${pr.number}.`);
+        loadComments();
+    }
+
+    async function replyToThread(id: string, body: string) {
+        await ReplyToThread(repo, id, body);
+        await loadComments();
+    }
+
+    async function resolveThread(id: string, resolved: boolean) {
+        await SetThreadResolved(repo, id, resolved);
+        await loadComments();
+    }
+
+    // The diff view is memoised, so it gets stable controls that call the latest handlers.
+    const latest = useRef({replyToThread, resolveThread, saveComposer, removeDraft, selectedPath: selected?.path});
+    latest.current = {replyToThread, resolveThread, saveComposer, removeDraft, selectedPath: selected?.path};
+    const threadControls = useMemo<ThreadControls>(() => ({
+        reply: (id, body) => latest.current.replyToThread(id, body),
+        resolve: (id, resolved) => latest.current.resolveThread(id, resolved),
+    }), []);
+    const draftControls = useMemo<DraftControls>(() => ({
+        save: body => latest.current.saveComposer(body),
+        cancel: () => setComposer(null),
+        edit: id => setComposer({kind: 'edit', id}),
+        remove: id => latest.current.removeDraft(id),
+    }), []);
+    const focusAt = useCallback((target: {side: Side; line: number}) => {
+        const path = latest.current.selectedPath;
+        if (path) setFocusLine({path, ...target});
+    }, []);
+
     // Ctrl+` shows or hides the terminal dock. It is captured before the terminal or inputs see the key.
     useEffect(() => {
         function onToggle(e: KeyboardEvent) {
@@ -367,6 +512,11 @@ function App() {
         if (tempFull && selected?.path !== tempFull) setTempFull(null);
     }, [selected, tempFull]);
 
+    // A draft being written belongs to the file on screen.
+    useEffect(() => {
+        setComposer(null);
+    }, [selected?.path]);
+
     // Stable across renders, so the diff does not redraw when unrelated state changes.
     const selectedPath = selected?.path;
     const showWholeFile = useCallback(() => {
@@ -390,6 +540,7 @@ function App() {
         setSearchQuery(emptyQuery);
         setSearchOpen(false);
         setCommentsOpen(false);
+        setFinishOpen(false);
         setCmdOpen(false);
         setPicked([]);
         setFilter('');
@@ -529,6 +680,13 @@ function App() {
         setRecord(saved);
         setReviewedHeads(pr ? parseReviewedHeads(readStore<unknown>(reviewedAtKey(repo, pr.number), null)) : {});
         setSyncError('');
+        const savedDrafts = next ? {key: draftsKeyOf(next.key), drafts: parseDrafts(readStore<unknown>(draftsKeyOf(next.key), null))} : null;
+        draftsRef.current = savedDrafts;
+        setDrafts(savedDrafts?.drafts ?? []);
+        setComposer(null);
+        setFocusLine(null);
+        setSummary('');
+        setVerdict('COMMENT');
     }, [repo, pr?.id, local?.base, local?.head]);
 
     // What GitHub says is viewed, on open and on every poll. Marks made here still wait their turn,
@@ -712,12 +870,16 @@ function App() {
                 if (reviewing) setQuickOpen(open => !open);
                 return;
             }
+            if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+                // Inside the Finish sheet or a text box, ⌘↵ is theirs.
+                if (!reviewing || finishOpen || isTyping(e.target)) return;
+                e.preventDefault();
+                setFinishOpen(true);
+                return;
+            }
             if (e.metaKey || e.ctrlKey || e.altKey) return;
-            if (quickOpen || paletteOpen || searchOpen) return;
-            const target = e.target as HTMLElement;
-            const typing = target instanceof HTMLInputElement || target instanceof HTMLSelectElement
-                || target instanceof HTMLTextAreaElement;
-            if (typing) {
+            if (quickOpen || paletteOpen || searchOpen || finishOpen) return;
+            if (isTyping(e.target)) {
                 return;
             }
 
@@ -758,6 +920,7 @@ function App() {
                 }
                 case 'Escape':
                     if (picked.length) setPicked([]);
+                    else setFocusLine(null);
                     return;
                 case 'p':
                     closeReview();
@@ -784,7 +947,10 @@ function App() {
                     if (selected) setNoteOpen(v => !v);
                     return;
                 case 'c':
-                    toggleComments();
+                    startComment();
+                    return;
+                case 'C':
+                    if (pr) toggleComments();
                     return;
                 case '[':
                 case ']':
@@ -945,7 +1111,7 @@ function App() {
     async function copySummary() {
         const title = pr ? `#${pr.number} ${pr.title}` : local?.title;
         if (!title) return;
-        const md = buildMarkdown({title, files: changes, reviewed, notes});
+        const md = buildMarkdown({title, files: changes, reviewed, notes, drafts});
         try {
             await navigator.clipboard.writeText(md);
             showFlash('Summary copied as Markdown');
@@ -959,9 +1125,11 @@ function App() {
             {id: 'back', label: 'Back to pull requests', hint: 'p', run: closeReview},
             {id: 'file', label: 'Go to file', hint: '⌘P', run: () => setQuickOpen(true)},
             {id: 'search', label: 'Search in files', hint: '⇧⌘F', run: () => setSearchOpen(true)},
+            {id: 'comment', label: 'Comment on the focused line, or the file', hint: 'c', run: startComment},
+            {id: 'finish', label: 'Finish review', hint: '⌘↵', run: () => setFinishOpen(true)},
         ] : []),
         ...(pr ? [
-            {id: 'comments', label: 'Show comments', hint: 'c', run: toggleComments},
+            {id: 'comments', label: 'Show comments', hint: '⇧C', run: toggleComments},
             {id: 'github', label: 'Open pull request on GitHub', run: () => BrowserOpenURL(pr.url)},
         ] : []),
         ...(reviewing ? [
@@ -1010,6 +1178,23 @@ function App() {
             )}
 
             {helpOpen && <ShortcutsSheet onClose={() => setHelpOpen(false)}/>}
+
+            {finishOpen && reviewing && (
+                <FinishSheet
+                    drafts={drafts.length}
+                    onClose={() => setFinishOpen(false)}
+                    mode={pr ? {
+                        kind: 'pr', isMine: pr.isMine, verdict, body: summary, onVerdict: setVerdict, onBody: setSummary, onSubmit: submitReview,
+                    } : {
+                        kind: 'local',
+                        onCopySummary: () => {
+                            copySummary();
+                            setFinishOpen(false);
+                        },
+                        onExportPatch: exportPatch,
+                    }}
+                />
+            )}
 
             {menu && (
                 <FileMenu
@@ -1117,10 +1302,13 @@ function App() {
                             {progressText({reviewed: reviewedCount, total: changes.length, changed: changedSinceReview.size})}
                         </span>
                         {pr && (
-                            <Button onClick={toggleComments} aria-pressed={commentsOpen} title="Review comments (c)">
+                            <Button onClick={toggleComments} aria-pressed={commentsOpen} title="Review comments (⇧C)">
                                 Comments{unresolvedCount > 0 ? ` ${unresolvedCount}` : ''}
                             </Button>
                         )}
+                        <Button onClick={() => setFinishOpen(true)} title={pr ? 'Submit your review with a verdict (⌘↵)' : 'Copy the summary or export a patch (⌘↵)'}>
+                            Finish review{drafts.length ? ` · ${drafts.length}` : ''} <Kbd>⌘↵</Kbd>
+                        </Button>
                         <Button onClick={() => setPaletteOpen(true)} title="All commands">Commands <Kbd>⌘K</Kbd></Button>
                     </header>
 
@@ -1185,6 +1373,7 @@ function App() {
                                     reviewed={reviewed}
                                     notes={notes}
                                     comments={commentCounts}
+                                    drafts={draftCountByPath}
                                     changedSinceReview={changedSinceReview}
                                     unsynced={unsynced}
                                     onToggle={toggleFolder}
@@ -1203,6 +1392,7 @@ function App() {
                                     reviewed={reviewed}
                                     notes={notes}
                                     comments={commentCounts}
+                                    drafts={draftCountByPath}
                                     changedSinceReview={changedSinceReview}
                                     unsynced={unsynced}
                                     onToggleReviewed={path => toggleFiles([path])}
@@ -1215,20 +1405,15 @@ function App() {
                             {changes.length > 0 && reviewedCount === changes.length && (
                                 <div className="passed" role="status">
                                     <OwlHop/>
-                                    {pr ? (
-                                        <>
-                                            <span>All {changes.length} files reviewed. Approve or request changes on GitHub.</span>
-                                            <Button onClick={() => BrowserOpenURL(pr.url)}>Open on GitHub</Button>
-                                        </>
-                                    ) : (
-                                        <span>All {changes.length} files reviewed.</span>
-                                    )}
+                                    <span>All {changes.length} files reviewed</span>
+                                    <Button onClick={() => setFinishOpen(true)}>Finish review <Kbd>⌘↵</Kbd></Button>
                                 </div>
                             )}
                             {commentsOpen && (
                                 <CommentsPanel
                                     discussion={discussion}
                                     loading={commentsLoading}
+                                    controls={threadControls}
                                     onOpenFile={openCommentFile}
                                     onOpenURL={BrowserOpenURL}
                                     onRefresh={loadComments}
@@ -1268,6 +1453,15 @@ function App() {
                                     threads={fileThreads}
                                     onOpenURL={BrowserOpenURL}
                                     diffView={diffView}
+                                    drafts={fileDrafts}
+                                    draftLabel={draftLabel}
+                                    composer={composer}
+                                    focus={focusLine?.path === selected.path ? focusLine : null}
+                                    onFocusLine={focusAt}
+                                    onComment={startComment}
+                                    onAddNoteToReview={() => addNoteToReview(selected.path)}
+                                    draftControls={draftControls}
+                                    threadControls={pr ? threadControls : null}
                                 />
                                 : <Empty title="No file selected" hint="Choose a file in the tree to see its diff."/>}
                         </main>
@@ -1309,6 +1503,7 @@ type RowProps = {
     reviewed: Record<string, string>;
     notes: Record<string, string>;
     comments: Record<string, number>;
+    drafts: Record<string, number>; // draft comments per file
     changedSinceReview: Set<string>;
     unsynced: Set<string>;
     onToggleReviewed: (path: string) => void;
@@ -1356,6 +1551,7 @@ function TreeItem(props: TreeProps & {node: TreeNode; depth: number}) {
                     reviewed={rest.reviewed}
                     notes={rest.notes}
                     comments={rest.comments}
+                    drafts={rest.drafts}
                     changedSinceReview={rest.changedSinceReview}
                     unsynced={rest.unsynced}
                     onToggle={rest.onToggle}
@@ -1393,6 +1589,9 @@ function FileRow(props: RowProps & {file: FileChange; label: ReactNode; depth: n
                 {rest.notes[file.path] && <span className="note-dot" title="Has a note">●</span>}
                 {rest.comments[file.path] > 0 && (
                     <span className="cmt-count" title="Open review comments on GitHub">{rest.comments[file.path]}</span>
+                )}
+                {rest.drafts[file.path] > 0 && (
+                    <span className="draft-count" title="Draft comments in your pending review">{rest.drafts[file.path]} draft</span>
                 )}
                 {rest.changedSinceReview.has(file.path) && <span className="changed-tag" title="Changed by a push after you reviewed it">changed</span>}
                 {rest.unsynced.has(file.path) && <span className="unsynced" title="Not on GitHub yet, retrying">●</span>}
@@ -1463,8 +1662,22 @@ function DiffPanel(props: {
     onToggleSince: () => void;
     diffNote: string; // why the whole pull request is shown instead of the changes since your review
     diffView: RefObject<DiffHandle | null>;
+    drafts: Draft[]; // this file's drafts, line and file
+    draftLabel: string;
+    composer: Composer | null;
+    focus: LineFocus | null;
+    onFocusLine: (target: {side: Side; line: number}) => void;
+    onComment: () => void;
+    onAddNoteToReview: () => void;
+    draftControls: DraftControls;
+    threadControls: ThreadControls | null;
 }) {
-    const {file, text, split, note, noteOpen} = props;
+    const {file, text, split, note, noteOpen, composer} = props;
+    const fileLevel = props.drafts.filter(d => d.kind === 'file');
+    const editing = composer?.kind === 'edit' ? composer.id : null;
+    const addingFile = composer?.kind === 'file' && composer.path === file.path;
+    // The line editor and focus are passed to the memoised diff only when they are on this file.
+    const lineComposer = composer?.kind === 'line' && composer.path === file.path ? composer : composer?.kind === 'edit' ? composer : null;
     return (
         <>
             <div className="diff-header">
@@ -1486,6 +1699,7 @@ function DiffPanel(props: {
                         </Button>
                     </div>
                 )}
+                <Button onClick={props.onComment} title="Comment on the line you clicked, or on the file (c)">Comment</Button>
                 <Button onClick={props.onToggleNote} title="Note (n)">{noteOpen ? 'Hide note' : 'Note'}</Button>
                 <Button onClick={props.onToggleSplit} title="Toggle split view (v)">
                     {split ? 'Unified' : 'Split'}
@@ -1504,12 +1718,31 @@ function DiffPanel(props: {
             </div>
             {props.diffNote && <div className="diff-note" role="status">{props.diffNote}</div>}
             {noteOpen && (
-                <textarea
-                    className="note"
-                    placeholder="A note for this file. It is saved on this machine and included in the Markdown summary."
-                    value={note}
-                    onChange={e => props.onNote(e.target.value)}
-                />
+                <>
+                    <textarea
+                        className="note"
+                        placeholder="A note for this file. It is saved on this machine and included in the Markdown summary."
+                        value={note}
+                        onChange={e => props.onNote(e.target.value)}
+                    />
+                    <div className="note-actions">
+                        <Button onClick={props.onAddNoteToReview} disabled={!note.trim()} title="Turn this note into a file comment in your pending review">
+                            Add to review
+                        </Button>
+                    </div>
+                </>
+            )}
+            {(fileLevel.length > 0 || addingFile) && (
+                <div className="file-drafts">
+                    <DraftStack
+                        drafts={fileLevel}
+                        editing={editing}
+                        adding={addingFile}
+                        label={props.draftLabel}
+                        placeholder="Comment on this file"
+                        controls={props.draftControls}
+                    />
+                </div>
             )}
             <DiffView
                 text={text}
@@ -1520,6 +1753,13 @@ function DiffPanel(props: {
                 jump={props.jump}
                 onJumpOutside={props.fullFile ? undefined : props.onJumpOutside}
                 ref={props.diffView}
+                drafts={props.drafts}
+                draftLabel={props.draftLabel}
+                composer={lineComposer}
+                focus={props.focus}
+                onFocusLine={props.onFocusLine}
+                draftControls={props.draftControls}
+                threadControls={props.threadControls}
             />
         </>
     );
@@ -1530,6 +1770,7 @@ export type DiffHandle = {moveHunk: (step: number) => void};
 
 const ROW_HEIGHT = 24; // a diff line, matching .diff-body's line-height; only rows with threads are measured
 const THREAD_HEIGHT = 96; // a guess for a row's review threads until the row is measured
+const DRAFT_HEIGHT = 84; // a guess for a draft or its editor under a row, until the row is measured
 const HEADER_HEIGHT = 48; // the sticky file header, which a row scrolled to the top must clear
 const BODY_PADDING = 6;
 const GUTTERS_WIDTH = 114; // two line-number gutters, the sign and the right padding of a unified line
@@ -1538,7 +1779,9 @@ const GUTTERS_WIDTH = 114; // two line-number gutters, the sign and the right pa
 // A thread whose line is not in the diff (outdated, or the file changed since) is listed at the top.
 // Only the rows in view are drawn, so a file of any length opens and scrolls at the same speed.
 // It is memoised: a diff can be thousands of lines, and most app state never touches it.
-const DiffView = memo(function DiffView({text, path, split, threads, onOpenURL, jump, onJumpOutside, ref}: {
+const DiffView = memo(function DiffView({
+    text, path, split, threads, onOpenURL, jump, onJumpOutside, ref, drafts, draftLabel, composer, focus, onFocusLine, draftControls, threadControls,
+}: {
     text: string;
     path: string; // picks the language for syntax colours
     split: boolean;
@@ -1547,6 +1790,13 @@ const DiffView = memo(function DiffView({text, path, split, threads, onOpenURL, 
     jump: {line: number; id: number} | null; // a new-side line to scroll to and flash
     onJumpOutside?: () => void; // asks for the whole file when the line is not in this diff
     ref?: Ref<DiffHandle>;
+    drafts: Draft[]; // line drafts are drawn under their line
+    draftLabel: string;
+    composer: Composer | null; // a line editor on this file, or a draft being edited
+    focus: {side: Side; line: number} | null;
+    onFocusLine: (target: {side: Side; line: number}) => void;
+    draftControls: DraftControls;
+    threadControls: ThreadControls | null;
 }) {
     const lines = useMemo(() => parseDiff(text), [text]);
     const rows = useMemo(() => diffRows(lines, split), [lines, split]);
@@ -1570,8 +1820,27 @@ const DiffView = memo(function DiffView({text, path, split, threads, onOpenURL, 
         (row: DiffRow) => (row.kind !== 'hunk' && row.newNo !== undefined ? byLine.get(row.newNo) ?? [] : []),
         [byLine],
     );
-    // Changes only with the rows or their threads, which is when the sizes must be estimated again.
-    const estimateSize = useCallback((i: number) => ROW_HEIGHT + threadsOf(rows[i]).length * THREAD_HEIGHT, [rows, threadsOf]);
+    // Line drafts by side and line, and what each row carries under it: drafts, and a new draft's editor.
+    const draftsAt = useMemo(() => {
+        const map = new Map<string, Draft[]>();
+        for (const d of drafts) {
+            if (d.kind === 'line') map.set(`${d.side}:${d.line}`, [...(map.get(`${d.side}:${d.line}`) ?? []), d]);
+        }
+        return map;
+    }, [drafts]);
+    const draftsOf = useCallback((row: DiffRow) => {
+        const targets = rowTargets(row);
+        return {
+            targets,
+            drafts: targets.flatMap(t => draftsAt.get(`${t.side}:${t.line}`) ?? []),
+            adding: composer?.kind === 'line' && targets.some(t => t.side === composer.side && t.line === composer.line),
+        };
+    }, [draftsAt, composer]);
+    // Changes only with the rows, their threads or drafts, which is when the sizes must be estimated again.
+    const estimateSize = useCallback((i: number) => {
+        const extra = draftsOf(rows[i]);
+        return ROW_HEIGHT + threadsOf(rows[i]).length * THREAD_HEIGHT + (extra.drafts.length + (extra.adding ? 1 : 0)) * DRAFT_HEIGHT;
+    }, [rows, threadsOf, draftsOf]);
     // The longest line sets the width, so the horizontal scroll does not change as rows come and go.
     const width = useMemo(() => {
         let columns = 0;
@@ -1629,7 +1898,7 @@ const DiffView = memo(function DiffView({text, path, split, threads, onOpenURL, 
 
     const orphanBlock = orphans.length > 0 && (
         <div className="thread-orphans">
-            {orphans.map((t, i) => <InlineThread key={`orphan-${i}`} thread={t} onOpenURL={onOpenURL}/>)}
+            {orphans.map((t, i) => <InlineThread key={`orphan-${i}`} thread={t} onOpenURL={onOpenURL} controls={threadControls}/>)}
         </div>
     );
 
@@ -1654,16 +1923,37 @@ const DiffView = memo(function DiffView({text, path, split, threads, onOpenURL, 
                     const row = rows[item.index];
                     const flashed = flash?.index === item.index ? flash.id : 0;
                     const rowThreads = threadsOf(row);
+                    const extra = draftsOf(row);
+                    const focused = focus && extra.targets.some(t => t.side === focus.side && t.line === focus.line) ? focus.side : undefined;
                     return (
                         <div
                             key={item.key}
                             data-index={item.index}
-                            ref={rowThreads.length ? virtualizer.measureElement : undefined}
+                            data-focus={focused}
+                            ref={rowThreads.length || extra.drafts.length || extra.adding ? virtualizer.measureElement : undefined}
                             className="diff-row"
                             style={{transform: `translateY(${item.start - scrollMargin}px)`}}
+                            onClick={e => {
+                                // A click on a line focuses it for c; clicks in threads and drafts are theirs.
+                                if (!(e.target instanceof Element) || e.target.closest('.cmt-thread, .draft-stack')) return;
+                                const target = focusFor(row, e.target.closest('.half.left') ? 'left' : 'right');
+                                if (target) onFocusLine(target);
+                            }}
                         >
                             <DiffRowView key={flashed} row={row} tokens={tokens} flashed={flashed > 0}/>
-                            {rowThreads.map((t, j) => <InlineThread key={`${item.index}-${j}`} thread={t} onOpenURL={onOpenURL}/>)}
+                            {rowThreads.map((t, j) => <InlineThread key={`${item.index}-${j}`} thread={t} onOpenURL={onOpenURL} controls={threadControls}/>)}
+                            {(extra.drafts.length > 0 || extra.adding) && (
+                                <div className="inline-drafts">
+                                    <DraftStack
+                                        drafts={extra.drafts}
+                                        editing={composer?.kind === 'edit' ? composer.id : null}
+                                        adding={extra.adding}
+                                        label={draftLabel}
+                                        placeholder="Comment on this line"
+                                        controls={draftControls}
+                                    />
+                                </div>
+                            )}
                         </div>
                     );
                 })}
@@ -1718,7 +2008,7 @@ function DiffRowView({row, tokens, flashed}: {row: DiffRow; tokens: Map<Line, To
 }
 
 // InlineThread is one review thread, drawn under the diff line it is attached to.
-function InlineThread({thread, onOpenURL}: {thread: PRThread; onOpenURL: (url: string) => void}) {
+function InlineThread({thread, onOpenURL, controls}: {thread: PRThread; onOpenURL: (url: string) => void; controls: ThreadControls | null}) {
     return (
         <div className={`cmt-thread inline-thread${thread.resolved ? ' resolved' : ''}`}>
             <div className="cmt-meta">
@@ -1728,6 +2018,7 @@ function InlineThread({thread, onOpenURL}: {thread: PRThread; onOpenURL: (url: s
                 {thread.url && <Button variant="link"  onClick={() => onOpenURL(thread.url)}>Open on GitHub</Button>}
             </div>
             {thread.comments.map((c, i) => <CommentBody key={i} comment={c}/>)}
+            {controls && <ThreadActions thread={thread} controls={controls}/>}
         </div>
     );
 }
@@ -1792,7 +2083,7 @@ const SHORTCUT_GROUPS: {title: string; rows: [string, string][]}[] = [
         ['↑ ↓', 'Move through the list'],
         ['Enter', 'Open the pull request, branch or commit'],
         ['p', 'Back to all pull requests'],
-        ['c', 'Show comments'],
+        ['⇧C', 'Show comments'],
     ]},
     {title: 'Files', rows: [
         ['↑ ↓', 'Previous or next file'],
@@ -1806,7 +2097,9 @@ const SHORTCUT_GROUPS: {title: string; rows: [string, string][]}[] = [
         ['x', 'Mark reviewed here and on GitHub, then go to the next file'],
         ['⌘-click', 'Add or remove a file from the selection'],
         ['⇧-click', 'Select a range of files'],
-        ['Esc', 'Clear the selection'],
+        ['Esc', 'Clear the selection, or the focused line'],
+        ['c', 'Comment on the line you clicked, or on the file'],
+        ['⌘↵', 'Finish review; in the Finish sheet, submit'],
     ]},
     {title: 'Diff', rows: [
         ['[ ]', 'Previous or next hunk'],
@@ -1847,6 +2140,11 @@ function ShortcutsSheet({onClose}: {onClose: () => void}) {
             </div>
         </div>
     );
+}
+
+// isTyping: the key went to a text box, so single-letter shortcuts stay out of its way.
+function isTyping(target: EventTarget | null): boolean {
+    return target instanceof HTMLInputElement || target instanceof HTMLSelectElement || target instanceof HTMLTextAreaElement;
 }
 
 function parentOf(path: string) {

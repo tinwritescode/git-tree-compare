@@ -18,3 +18,9 @@ describe('diffRows', () => {
         ]);
     });
 });
+
+describe('parseDiff', () => {
+    it('adds no line for the newline that ends git output', () => {
+        expect(parseDiff('@@ -1 +1 @@\n-a\n+b\n').map(l => l.kind)).toEqual(['hunk', 'del', 'add']);
+    });
+});

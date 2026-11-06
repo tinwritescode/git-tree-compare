@@ -2100,3 +2100,130 @@ button:disabled {
         transform: translateX(80px);
     }
 }
+
+/* The pending review: drafts are outlined, dashed, so they never read as posted. */
+.diff-row[data-focus] > .line,
+.diff-row[data-focus="LEFT"] .half.left,
+.diff-row[data-focus="RIGHT"] .half.right {
+    box-shadow: inset 3px 0 0 var(--focus);
+}
+
+.draft-stack,
+.thread-actions {
+    font-family: var(--font-ui);
+    white-space: normal;
+}
+
+.inline-drafts,
+.file-drafts {
+    padding: 0 12px;
+}
+
+.draft {
+    max-width: 720px;
+    margin: 4px 0;
+    padding: 6px 8px;
+    border: 1px dashed var(--accent);
+    border-radius: var(--radius);
+    background: var(--bg-alt);
+}
+
+.draft-label {
+    color: var(--accent-text);
+    font-size: 13px;
+}
+
+.draft-editor textarea,
+.thread-actions textarea,
+.finish-body {
+    box-sizing: border-box;
+    width: 100%;
+    min-height: 64px;
+    padding: 6px 8px;
+    background: var(--btn-bg);
+    color: inherit;
+    border: 1px solid var(--btn-border);
+    border-radius: var(--radius);
+    font: inherit;
+    font-size: 13px;
+    resize: vertical;
+}
+
+.draft-actions,
+.finish-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 4px;
+}
+
+.thread-actions {
+    margin-top: 6px;
+}
+
+.note-actions {
+    display: flex;
+    justify-content: flex-end;
+    padding: 4px 12px 0;
+}
+
+.draft-count {
+    flex: none;
+    padding: 0 4px;
+    border: 1px dashed var(--accent);
+    border-radius: 8px;
+    color: var(--accent-text);
+    font-size: 12px;
+    line-height: 16px;
+}
+
+.finish {
+    width: min(520px, 92vw);
+    padding: 10px 16px 14px;
+    background: var(--bg-alt);
+    border: 1px solid var(--btn-border);
+    border-radius: var(--radius-lg);
+    animation: rise-in var(--t-base) var(--ease) both;
+}
+
+.finish-verdicts {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 8px;
+}
+
+.finish-verdict {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border: 1px solid var(--btn-border);
+    border-radius: var(--radius);
+    cursor: pointer;
+}
+
+.finish-verdict:has(input:checked) {
+    border-color: var(--cool);
+    background: var(--cool-soft);
+    color: var(--cool);
+}
+
+.finish-verdict.refused {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.finish-count,
+.finish-note {
+    margin-top: 6px;
+    color: var(--text-dim);
+    font-size: 13px;
+}
+
+.finish-error {
+    margin-top: 6px;
+    color: var(--accent-text);
+    font-size: 13px;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}

@@ -17,7 +17,8 @@ Created by **Tin Nguyen**.
 - Split or unified diff, optional whitespace ignore, and hunk navigation
 - Press `x` to mark a file reviewed, here and on GitHub, then move to the next unreviewed file
 - Viewed state comes from GitHub, and files changed since you viewed them are flagged
-- Review threads inline in the diff, and notes per file
+- Review threads inline in the diff, with reply and resolve, and notes per file
+- Draft comments on lines and files, then finish the review with a verdict in one go
 - Run a command (such as tests) against the changed files
 - Embedded terminal in the repository, toggled with `` Ctrl+` ``
 - Export a Markdown summary or a `.patch` file
@@ -103,12 +104,21 @@ Press `g`, or the button beside the file filter, to switch between the folder tr
 
 ### Comments
 
-Press `c` to list review threads and conversation comments, grouped by file.
+Press `⇧C` to list review threads and conversation comments, grouped by file.
 
 - Open a file from the list to jump to its diff. Review threads appear under the line they were left on.
 - Each file in the tree shows the number of open threads on it.
+- **Reply** and **Resolve** (or **Reopen**) sit under each thread, inline and in the list. They post on GitHub when you click them.
 
-Comments are read-only. Reply and resolve on GitHub.
+### Draft comments and Finish review
+
+Nothing you draft reaches GitHub until you finish the review.
+
+- Click a line in the diff, then press `c` (or **Comment**) to draft a comment under it. With no line clicked, `c` drafts a comment on the whole file. GitHub takes line comments only on changed lines and the 3 lines around them, and not while the diff shows only the changes since your review.
+- Drafts show in the diff with a dashed outline, and each file in the tree shows how many it has. Edit or delete them there. They are saved on this machine and survive a restart.
+- **Add to review**, under a file's note, turns the note into a file comment.
+- Press `⌘↵` (or **Finish review**) to choose Comment, Approve or Request changes, write a summary, and post it with every draft in one review. Requesting changes needs a summary or a draft. On your own pull request GitHub only lets you comment. If GitHub refuses the review, nothing is posted, your drafts stay, and the sheet shows what GitHub said.
+- For a commit or branch, Finish offers **Copy summary** (Markdown with your notes and drafts) and **Export patch**.
 
 ## Keyboard shortcuts
 
@@ -126,13 +136,15 @@ Press `?` in the app to see this list.
 | `x` | Mark reviewed here and on GitHub (or unmark) |
 | `⌘`-click | Add or remove a file from the selection |
 | `⇧`-click | Select a range of files |
-| `Esc` | Clear the selection |
+| `Esc` | Clear the selection, or the line you clicked |
+| `c` | Comment on the line you clicked, or on the file |
+| `⌘↵` | Finish review; in the Finish sheet, submit |
 | `[` `]` | Previous or next hunk |
 | `v` | Split or unified view |
 | `b` | Ignore whitespace |
 | `s` | Whole pull request, or only the changes since your review (files a push changed after you reviewed them) |
 | `n` | Note for the file |
-| `c` | Comments |
+| `⇧C` | Comments |
 | `o` | Open the file in your editor |
 | `g` | Group files by state, or show them by folder |
 | `t` | Run a command |

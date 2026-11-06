@@ -201,11 +201,86 @@ export type PRDiscussion = main.PRDiscussion;
 export type PRThread = main.PRThread;
 export type PRComment = main.PRComment;
 
+// ThreadControls post to GitHub at once: each is a reviewer's explicit click. A rejected promise
+// carries GitHub's error.
+export type ThreadControls = {
+    reply: (threadID: string, body: string) => Promise<void>;
+    resolve: (threadID: string, resolved: boolean) => Promise<void>;
+};
+
+// ThreadActions are Reply and Resolve under a review thread. A reply that fails keeps its text.
+export function ThreadActions({thread, controls}: {thread: PRThread; controls: ThreadControls}) {
+    const [replying, setReplying] = useState(false);
+    const [body, setBody] = useState('');
+    const [busy, setBusy] = useState(false);
+    const [failure, setFailure] = useState('');
+
+    async function run(action: () => Promise<void>) {
+        setBusy(true);
+        setFailure('');
+        try {
+            await action();
+            return true;
+        } catch (e) {
+            setFailure(String(e));
+            return false;
+        } finally {
+            setBusy(false);
+        }
+    }
+
+    async function send() {
+        if (!body.trim() || busy) return;
+        if (await run(() => controls.reply(thread.id, body))) {
+            setBody('');
+            setReplying(false);
+        }
+    }
+
+    if (!thread.id) return null;
+    return (
+        <div className="thread-actions">
+            {replying ? (
+                <>
+                    <textarea
+                        autoFocus
+                        value={body}
+                        placeholder="Reply. It posts on GitHub when you send it."
+                        disabled={busy}
+                        onChange={e => setBody(e.target.value)}
+                        onKeyDown={e => {
+                            if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+                                e.preventDefault();
+                                send();
+                            }
+                            if (e.key === 'Escape') setReplying(false);
+                        }}
+                    />
+                    <div className="draft-actions">
+                        <span className="spacer"/>
+                        <Button onClick={() => setReplying(false)} disabled={busy}>Cancel</Button>
+                        <Button onClick={send} disabled={busy || !body.trim()}>{busy ? 'Sending…' : 'Send reply'} <Kbd>⌘↵</Kbd></Button>
+                    </div>
+                </>
+            ) : (
+                <div className="draft-actions">
+                    <Button onClick={() => setReplying(true)} disabled={busy}>Reply</Button>
+                    <Button onClick={() => run(() => controls.resolve(thread.id, !thread.resolved))} disabled={busy}>
+                        {thread.resolved ? 'Reopen' : 'Resolve'}
+                    </Button>
+                </div>
+            )}
+            {failure && <div className="finish-error" role="alert">{failure}</div>}
+        </div>
+    );
+}
+
 // CommentsPanel lists the review threads and conversation comments on the open pull request.
 // Threads are grouped by file; a file name opens that file's diff.
-export function CommentsPanel({discussion, loading, onOpenFile, onOpenURL, onRefresh, onClose}: {
+export function CommentsPanel({discussion, loading, controls, onOpenFile, onOpenURL, onRefresh, onClose}: {
     discussion: PRDiscussion | null;
     loading: boolean;
+    controls: ThreadControls;
     onOpenFile: (path: string) => void;
     onOpenURL: (url: string) => void;
     onRefresh: () => void;
@@ -250,6 +325,7 @@ export function CommentsPanel({discussion, loading, onOpenFile, onOpenURL, onRef
                             {t.comments.map((c, j) => (
                                 <CommentBody key={j} comment={c}/>
                             ))}
+                            <ThreadActions thread={t} controls={controls}/>
                         </div>
                     ))}
                 </div>

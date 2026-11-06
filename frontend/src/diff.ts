@@ -27,7 +27,8 @@ const HUNK_HEADER = /^@@ -(\d+)(?:,\d+)? \+(\d+)/;
 // parseDiff drops git's file header and returns the hunks as lines, with
 // line numbers and word-level highlights on paired removed/added lines.
 export function parseDiff(text: string): Line[] {
-    const raw = text.split('\n');
+    // git ends its output with a newline, which is not a line of the file.
+    const raw = text.replace(/\n$/, '').split('\n');
     const start = raw.findIndex(l => l.startsWith('@@'));
     if (start === -1) return [];
 
