@@ -22,6 +22,10 @@ export function DiffAnchor(arg1) {
   return window['go']['main']['App']['DiffAnchor'](arg1);
 }
 
+export function DiffSince(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['DiffSince'](arg1, arg2, arg3, arg4);
+}
+
 export function ExportPatch(arg1, arg2) {
   return window['go']['main']['App']['ExportPatch'](arg1, arg2);
 }

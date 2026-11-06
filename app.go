@@ -227,6 +227,11 @@ func (a *App) Diff(s Scope, path string) (string, error) {
 	return FileDiff(s, path)
 }
 
+// DiffSince returns one file's diff from the commit the reviewer marked it at to the scope's head.
+func (a *App) DiffSince(s Scope, from, path, prURL string) (SinceDiff, error) {
+	return DiffSince(s, from, path, prURL)
+}
+
 // RunCommand runs a shell command in the repository and returns its output.
 func (a *App) RunCommand(repo, command string) RunResult {
 	return RunCommand(repo, command)

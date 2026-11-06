@@ -515,6 +515,20 @@ export namespace main {
 		    return a;
 		}
 	}
+	export class SinceDiff {
+	    text: string;
+	    found: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new SinceDiff(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.text = source["text"];
+	        this.found = source["found"];
+	    }
+	}
 	export class UpdateInfo {
 	    current: string;
 	    latest: string;

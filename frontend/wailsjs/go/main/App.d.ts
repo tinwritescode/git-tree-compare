@@ -12,6 +12,8 @@ export function Diff(arg1:main.Scope,arg2:string):Promise<string>;
 
 export function DiffAnchor(arg1:string):Promise<string>;
 
+export function DiffSince(arg1:main.Scope,arg2:string,arg3:string,arg4:string):Promise<main.SinceDiff>;
+
 export function ExportPatch(arg1:main.Scope,arg2:string):Promise<string>;
 
 export function FindClone(arg1:string,arg2:Array<string>):Promise<string>;
