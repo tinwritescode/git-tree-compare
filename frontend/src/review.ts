@@ -63,3 +63,9 @@ export function nextUnreviewed<T extends {path: string}>(files: T[], record: Rev
     const order = [...files.slice(at + 1), ...files.slice(0, Math.max(at, 0))];
     return order.find(f => !isReviewed(record, f.path)) ?? null;
 }
+
+// progressText is the review's progress for the header, such as "7 of 11 reviewed · 2 changed".
+export function progressText({reviewed, total, changed}: {reviewed: number; total: number; changed: number}): string {
+    const done = `${reviewed} of ${total} reviewed`;
+    return changed ? `${done} · ${changed} changed` : done;
+}

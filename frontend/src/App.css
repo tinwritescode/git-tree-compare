@@ -1672,11 +1672,6 @@ button:disabled {
     font-size: 14px;
 }
 
-.review-count strong {
-    color: var(--accent-text);
-    font-weight: 500;
-}
-
 .sync-note {
     flex: none;
     color: var(--warn-text);
@@ -1773,6 +1768,36 @@ button:disabled {
     border-color: var(--done);
     background: var(--done);
     color: var(--on-done);
+}
+
+/* Whole PR | Since my review: two halves of one control, the shown range filled in. */
+.since-toggle {
+    display: flex;
+    flex: none;
+}
+
+.since-toggle > button:first-child {
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+}
+
+.since-toggle > button:last-child {
+    margin-left: -1px;
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+}
+
+.since-toggle > button[aria-pressed="true"] {
+    border-color: var(--cool);
+    background: var(--cool-soft);
+    color: var(--cool);
+}
+
+.diff-note {
+    padding: 6px 12px;
+    border-bottom: 1px solid var(--border);
+    color: var(--warn-text);
+    font-size: 13px;
 }
 
 .review-toggle[aria-pressed="true"] kbd {

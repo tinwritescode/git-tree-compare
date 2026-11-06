@@ -83,6 +83,8 @@ git-tree-compare . --branch feat/x --base staging
 - Press `x` on a reviewed file to unmark it, here and on GitHub.
 - If GitHub cannot be reached, the mark stays on screen and the app keeps trying.
 - A file tagged **changed** was changed by a push after you reviewed it.
+- If you marked that file here, press `s` (or **Since my review** above the diff) to see only what changed after your review. When a force push removed the commit you reviewed, the whole pull request shows, with a note saying why.
+- The header counts progress, such as "7 of 11 reviewed · 2 changed".
 
 ### Group files by state
 
@@ -128,6 +130,7 @@ Press `?` in the app to see this list.
 | `[` `]` | Previous or next hunk |
 | `v` | Split or unified view |
 | `b` | Ignore whitespace |
+| `s` | Whole pull request, or only the changes since your review (files a push changed after you reviewed them) |
 | `n` | Note for the file |
 | `c` | Comments |
 | `o` | Open the file in your editor |

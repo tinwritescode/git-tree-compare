@@ -8,6 +8,7 @@ import {
     FindClone,
     Diff,
     DiffAnchor,
+    DiffSince,
     ExportPatch,
     InstallCLI,
     InstallUpdate,
@@ -35,8 +36,12 @@ import {type InboxRow, type LocalWork} from './inbox';
 import {PR, PRList, ReviewRuler} from './prs';
 import {RefPicker, type RefMode} from './ref-picker';
 import {
-    applyServerStates, emptyRecord, isChangedSinceReview, isReviewed, nextBatch, nextUnreviewed, ReviewRecord, settleBatch, toggleReviewed,
+    applyServerStates, emptyRecord, isChangedSinceReview, isReviewed, nextBatch, nextUnreviewed, progressText, ReviewRecord, settleBatch,
+    toggleReviewed,
 } from './review';
+import {
+    diffRange, type DiffMode, type DiffRange, fallbackNote, loadDiff, parseReviewedHeads, recordReviewedHeads, type ReviewedHeads, type ShownDiff, sinceHead,
+} from './since';
 import {buildTree, FileChange, SortMode, TreeNode} from './tree';
 import {groupByState, NOISE_LABEL, noiseOf, type NoiseReason, parseTreeViews, SECTION_TITLE, type Section, type SectionKind, type TreeViews} from './triage';
 import type {main} from '../wailsjs/go/models';
@@ -76,6 +81,8 @@ function writeStore(key: string, value: unknown) {
 }
 
 const reviewKey = (repo: string, number: number) => `git-tree-compare:review:${repo}#${number}`;
+// The head each file of a pull request was marked reviewed at, for "Since my review".
+const reviewedAtKey = (repo: string, number: number) => `git-tree-compare:reviewedAt:${repo}#${number}`;
 const localReviewKey = (repo: string, r: main.LocalReview) => `git-tree-compare:review:${repo}@${r.base}..${r.head}`;
 
 type OpenRequest = {repo?: string; error?: string; review?: main.LocalReview; link?: main.OpenLink};
@@ -98,6 +105,7 @@ function App() {
     const [target, setTarget] = useState<main.ReviewTarget | null>(null);
     const [pollTick, setPollTick] = useState(0);
     const [record, setRecord] = useState<ReviewRecord>(emptyRecord);
+    const [reviewedHeads, setReviewedHeads] = useState<ReviewedHeads>({});
     const [syncError, setSyncError] = useState('');
     const [helpOpen, setHelpOpen] = useState(false);
     const [termOpen, setTermOpen] = useState(false);
@@ -110,6 +118,8 @@ function App() {
     const [selected, setSelected] = useState<FileChange | null>(null);
     const [diff, setDiff] = useState('');
     const [diffPath, setDiffPath] = useState(''); // the file the diff text belongs to, which lags a new pick
+    const [diffNote, setDiffNote] = useState(''); // why the diff shows the whole pull request when asked for less
+    const [diffMode, setDiffMode] = useState<DiffMode>('whole'); // whole pull request, or since my review where there is one
     const [filter, setFilter] = useState('');
     const [sort, setSort] = useState<SortMode>(() => readStore<SortMode>('git-tree-compare:sort', 'name'));
     const [split, setSplit] = useState(() => readStore('git-tree-compare:split', false));
@@ -151,7 +161,7 @@ function App() {
     const writes = useRef(0); // counts accepted writes, to drop reads that started before them
     const filterInput = useRef<HTMLInputElement>(null);
     const diffView = useRef<DiffHandle>(null);
-    const diffCache = useRef<{scope: typeof scope; texts: Map<string, string>}>({scope: null, texts: new Map()});
+    const diffCache = useRef<{scope: typeof scope; texts: Map<string, ShownDiff>}>({scope: null, texts: new Map()});
     const seenHead = useRef<{number: number; head: string} | null>(null);
 
     const openNumber = subject?.kind === 'pr' ? subject.number : null;
@@ -214,6 +224,12 @@ function App() {
         [discussion, selected],
     );
     const reviewedCount = Object.keys(reviewed).length;
+    // The head the selected file was reviewed at, when a push changed it since. Only pull requests move.
+    const sinceFrom = pr && selected && commits
+        ? sinceHead({record, heads: reviewedHeads, path: selected.path, head: commits.head})
+        : null;
+    const range = useMemo(() => diffRange({mode: diffMode, from: sinceFrom}), [diffMode, sinceFrom]);
+    const prURL = pr?.url; // where DiffSince fetches a reviewed commit the clone lacks
     // The menu acts on the whole selection when the right-clicked file is part of it.
     const menuPaths = menu ? (pickedSet.has(menu.path) ? picked : [menu.path]) : [];
     const menuAllReviewed = menuPaths.length > 0 && menuPaths.every(p => reviewed[p]);
@@ -258,6 +274,11 @@ function App() {
         // A commit or branch has no pull request to tell, so its mark is settled as soon as it is made.
         const next = pr ? toggled : settleBatch(toggled, {paths, viewed});
         commitRecord(next);
+        if (pr && commits) {
+            const heads = recordReviewedHeads({heads: reviewedHeads, paths, viewed, head: commits.head});
+            setReviewedHeads(heads);
+            writeStore(reviewedAtKey(repo, pr.number), heads);
+        }
         if (pr) flushReview();
         if (viewed && paths.length === 1 && paths[0] === selected?.path) {
             const following = nextUnreviewed(files, next, paths[0]);
@@ -506,6 +527,7 @@ function App() {
         const saved = next ? readStore<ReviewRecord>(next.key, emptyRecord) : emptyRecord;
         recordRef.current = saved;
         setRecord(saved);
+        setReviewedHeads(pr ? parseReviewedHeads(readStore<unknown>(reviewedAtKey(repo, pr.number), null)) : {});
         setSyncError('');
     }, [repo, pr?.id, local?.base, local?.head]);
 
@@ -565,7 +587,7 @@ function App() {
     }, [repo, pr?.id]);
 
     // Reload changed files when the commits or the whitespace option change. Keep the
-    // selection if the file is still part of the pull request, otherwise select the first file.
+    // selection if the file is still part of the pull request, otherwise select the first file on screen (below).
     useEffect(() => {
         if (!scope) {
             setChanges([]);
@@ -579,7 +601,7 @@ function App() {
                 if (cancelled) return;
                 setChanges(list);
                 setError('');
-                setSelected(prev => list.find(f => f.path === prev?.path) ?? list[0] ?? null);
+                setSelected(prev => list.find(f => f.path === prev?.path) ?? null);
             })
             .catch(e => !cancelled && setError(String(e)))
             .finally(() => !cancelled && setLoading(false));
@@ -587,6 +609,11 @@ function App() {
             cancelled = true;
         };
     }, [scope]);
+
+    // With nothing selected, the first file in the order on screen opens, before the frame is drawn.
+    useLayoutEffect(() => {
+        if (!selected) setSelected(files[0] ?? rulerFiles[0] ?? changes[0] ?? null);
+    }, [selected, files, rulerFiles, changes]);
 
     useEffect(() => {
         writeStore('git-tree-compare:last', {repo});
@@ -615,26 +642,35 @@ function App() {
         // A diff between two commits never changes, so a file opened again in this scope draws at once.
         if (diffCache.current.scope !== scope) diffCache.current = {scope, texts: new Map()};
         const texts = diffCache.current.texts;
-        const key = `${whole ? 'whole' : 'changes'}:${selected.path}`;
+        const path = selected.path;
+        const key = `${range.kind === 'since' ? range.from : 'pr'}:${whole ? 'whole' : 'changes'}:${path}`;
+        const show = (shown: ShownDiff) => {
+            setDiff(shown.text);
+            setDiffNote(shown.fallback ? fallbackNote(shown.fallback) : '');
+            setDiffPath(path);
+        };
         const cached = texts.get(key);
         if (cached !== undefined) {
-            setDiff(cached);
-            setDiffPath(selected.path);
+            show(cached);
             return;
         }
-        Diff({...scope, fullFile: whole}, selected.path)
-            .then(text => {
-                texts.set(key, text);
+        const fileScope = {...scope, fullFile: whole};
+        loadDiff({
+            range,
+            whole: () => Diff(fileScope, path),
+            since: from => DiffSince(fileScope, from, path, prURL ?? ''),
+        })
+            .then(shown => {
+                // A failed read may work next time; a commit that is gone stays gone.
+                if (shown.fallback?.kind !== 'error') texts.set(key, shown);
                 dropOldest(texts, DIFF_CACHE_SIZE);
-                if (cancelled) return;
-                setDiff(text);
-                setDiffPath(selected.path);
+                if (!cancelled) show(shown);
             })
             .catch(e => !cancelled && setError(String(e)));
         return () => {
             cancelled = true;
         };
-    }, [selected, scope, fullFile, tempFull]);
+    }, [selected, scope, fullFile, tempFull, range, prURL]);
 
     useEffect(() => {
         InstalledEditors().then(list => setEditors(list ?? [])).catch(() => setEditors([]));
@@ -741,6 +777,9 @@ function App() {
                 case 'g':
                     toggleTreeView();
                     return;
+                case 's':
+                    toggleSince();
+                    return;
                 case 'n':
                     if (selected) setNoteOpen(v => !v);
                     return;
@@ -756,6 +795,11 @@ function App() {
         window.addEventListener('keydown', onKey);
         return () => window.removeEventListener('keydown', onKey);
     });
+
+    // Switches the diff between the whole pull request and the changes since the reviewer's review.
+    function toggleSince() {
+        if (sinceFrom) setDiffMode(m => (m === 'since' ? 'whole' : 'since'));
+    }
 
     function moveHunk(step: number) {
         diffView.current?.moveHunk(step);
@@ -924,6 +968,9 @@ function App() {
             {id: 'ws', label: ignoreWS ? 'Show whitespace changes' : 'Ignore whitespace changes', hint: 'b', run: () => setIgnoreWS(v => !v)},
             {id: 'sort', label: sort === 'name' ? 'Sort files by size of change' : 'Sort files by name', run: () => setSort(s => (s === 'name' ? 'size' : 'name'))},
             {id: 'view', label: treeView === 'state' ? 'Show files by folder' : 'Group files by state', hint: 'g', run: toggleTreeView},
+            ...(sinceFrom ? [{
+                id: 'since', label: diffMode === 'since' ? 'Show the whole pull request' : 'Show changes since my review', hint: 's', run: toggleSince,
+            }] : []),
             {id: 'run', label: 'Run a command', hint: 't', run: () => setCmdOpen(v => !v)},
             {id: 'summary', label: 'Copy summary as Markdown', run: copySummary},
             {id: 'patch', label: 'Export patch', run: exportPatch},
@@ -1066,7 +1113,9 @@ function App() {
                                 {unsynced.size} not on GitHub yet, retrying
                             </span>
                         )}
-                        <span className="review-count" title="Files reviewed"><strong>{reviewedCount}</strong>/{changes.length}</span>
+                        <span className="review-count" title="Files reviewed, and files a push changed after you reviewed them">
+                            {progressText({reviewed: reviewedCount, total: changes.length, changed: changedSinceReview.size})}
+                        </span>
                         {pr && (
                             <Button onClick={toggleComments} aria-pressed={commentsOpen} title="Review comments (c)">
                                 Comments{unresolvedCount > 0 ? ` ${unresolvedCount}` : ''}
@@ -1209,6 +1258,9 @@ function App() {
                                     onToggleFullFile={() => (tempFull === selected.path ? setTempFull(null) : setFullFile(v => !v))}
                                     jump={jump?.path === selected.path && diffPath === selected.path ? jump : null}
                                     onJumpOutside={showWholeFile}
+                                    since={sinceFrom ? range.kind : null}
+                                    onToggleSince={toggleSince}
+                                    diffNote={diffPath === selected.path ? diffNote : ''}
                                     editors={editors}
                                     defaultEditor={defaultEditor}
                                     onOpenIn={openIn}
@@ -1407,6 +1459,9 @@ function DiffPanel(props: {
     onOpenURL: (url: string) => void;
     jump: {line: number; id: number} | null;
     onJumpOutside: () => void; // the jump line is not in this diff
+    since: DiffRange['kind'] | null; // the range shown, when the file changed since your review
+    onToggleSince: () => void;
+    diffNote: string; // why the whole pull request is shown instead of the changes since your review
     diffView: RefObject<DiffHandle | null>;
 }) {
     const {file, text, split, note, noteOpen} = props;
@@ -1421,6 +1476,16 @@ function DiffPanel(props: {
                 <Button className="review-toggle" aria-pressed={props.reviewed} onClick={props.onToggleReviewed} title="Mark reviewed here and on GitHub (x)">
                     {props.reviewed ? 'Reviewed' : 'Mark reviewed'} <Kbd>x</Kbd>
                 </Button>
+                {props.since && (
+                    <div className="since-toggle" role="group" aria-label="Diff range">
+                        <Button aria-pressed={props.since === 'whole'} onClick={props.since === 'whole' ? undefined : props.onToggleSince} title="Every change in the pull request (s)">
+                            Whole PR
+                        </Button>
+                        <Button aria-pressed={props.since === 'since'} onClick={props.since === 'since' ? undefined : props.onToggleSince} title="Only what changed after you marked this file reviewed (s)">
+                            Since my review
+                        </Button>
+                    </div>
+                )}
                 <Button onClick={props.onToggleNote} title="Note (n)">{noteOpen ? 'Hide note' : 'Note'}</Button>
                 <Button onClick={props.onToggleSplit} title="Toggle split view (v)">
                     {split ? 'Unified' : 'Split'}
@@ -1437,6 +1502,7 @@ function DiffPanel(props: {
                 )}
                 <EditorMenu editors={props.editors} current={props.defaultEditor} disabled={file.status === 'D'} onOpen={props.onOpenIn}/>
             </div>
+            {props.diffNote && <div className="diff-note" role="status">{props.diffNote}</div>}
             {noteOpen && (
                 <textarea
                     className="note"
@@ -1746,6 +1812,7 @@ const SHORTCUT_GROUPS: {title: string; rows: [string, string][]}[] = [
         ['[ ]', 'Previous or next hunk'],
         ['v', 'Split or unified view'],
         ['b', 'Ignore whitespace'],
+        ['s', 'Whole pull request, or only the changes since your review'],
         ['n', 'Note for the file'],
     ]},
     {title: 'App', rows: [

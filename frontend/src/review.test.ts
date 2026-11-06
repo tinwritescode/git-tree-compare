@@ -1,6 +1,6 @@
 import {describe, expect, it} from 'vitest';
 import {
-    applyServerStates, emptyRecord, isChangedSinceReview, isReviewed, nextBatch, nextUnreviewed, settleBatch, toggleReviewed,
+    applyServerStates, emptyRecord, isChangedSinceReview, isReviewed, nextBatch, nextUnreviewed, progressText, settleBatch, toggleReviewed,
 } from './review';
 
 describe('toggleReviewed', () => {
@@ -86,5 +86,12 @@ describe('nextUnreviewed', () => {
 
     it('returns null when everything else is reviewed', () => {
         expect(nextUnreviewed(files, {states: {b: 'VIEWED', c: 'VIEWED'}, pending: {}}, 'a')).toBeNull();
+    });
+});
+
+describe('progressText', () => {
+    it('counts reviewed files and those a push changed since', () => {
+        expect(progressText({reviewed: 7, total: 11, changed: 2})).toBe('7 of 11 reviewed · 2 changed');
+        expect(progressText({reviewed: 7, total: 11, changed: 0})).toBe('7 of 11 reviewed');
     });
 });
