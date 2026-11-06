@@ -2,6 +2,8 @@ import {type KeyboardEvent, type ReactNode, useEffect, useMemo, useRef, useState
 import type {main} from '../wailsjs/go/models';
 import {PRChecks, RunCommand} from '../wailsjs/go/main/App';
 import {checkChip, checksSummary} from './checks';
+import {ThreadCheckView} from './claude-review';
+import type {ThreadCheck} from './rereview';
 import {fuzzyScore, shellQuote} from './util';
 import {Button} from './ui/button';
 import {Kbd} from './ui/kbd';
@@ -333,10 +335,11 @@ export function ThreadActions({thread, controls}: {thread: PRThread; controls: T
 
 // CommentsPanel lists the review threads and conversation comments on the open pull request.
 // Threads are grouped by file; a file name opens that file's diff.
-export function CommentsPanel({discussion, loading, controls, onOpenFile, onOpenURL, onRefresh, onClose}: {
+export function CommentsPanel({discussion, loading, controls, checks, onOpenFile, onOpenURL, onRefresh, onClose}: {
     discussion: PRDiscussion | null;
     loading: boolean;
     controls: ThreadControls;
+    checks: Readonly<Record<string, ThreadCheck>>; // Claude's read on threads a push may have answered, by thread id
     onOpenFile: (path: string) => void;
     onOpenURL: (url: string) => void;
     onRefresh: () => void;
@@ -381,6 +384,7 @@ export function CommentsPanel({discussion, loading, controls, onOpenFile, onOpen
                             {t.comments.map((c, j) => (
                                 <CommentBody key={j} comment={c}/>
                             ))}
+                            {checks[t.id] && <ThreadCheckView check={checks[t.id]}/>}
                             <ThreadActions thread={t} controls={controls}/>
                         </div>
                     ))}

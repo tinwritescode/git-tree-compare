@@ -32,7 +32,7 @@ describe('the word diff of a polished draft', () => {
 
 describe('the polish of a draft', () => {
     it('offers Claude’s rewrite against the words it was asked about, and an error as an error', () => {
-        const asked = {kind: 'running', taskId: 't1', original: 'fix it'} as const;
+        const asked = {kind: 'running', original: 'fix it'} as const;
         expect(polishStep(asked, {kind: 'result', json: null, text: '  Please fix it.\n', costUsd: 0.01})).toEqual({kind: 'ready', original: 'fix it', rewrite: 'Please fix it.'});
         expect(polishStep(asked, {kind: 'error', message: 'Stopped.'})).toEqual({kind: 'error', message: 'Stopped.'});
         expect(polishStep(asked, {kind: 'tool', name: 'Read', path: null})).toBe(asked);

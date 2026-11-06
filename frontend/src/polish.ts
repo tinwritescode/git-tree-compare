@@ -4,7 +4,7 @@ import type {ClaudeEvent} from './claude';
 
 export type PolishState =
     | {kind: 'idle'}
-    | {kind: 'running'; taskId: string; original: string}
+    | {kind: 'running'; original: string}
     | {kind: 'ready'; original: string; rewrite: string}
     | {kind: 'error'; message: string};
 

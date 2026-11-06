@@ -7,7 +7,8 @@ import {Button} from './ui/button';
 export function ClaudePanel({title, turns, ask, onClose}: {
     title: string;
     turns: Turn[];
-    ask: {onSend: (question: string) => void; busy: boolean} | null; // the question box, for Ask
+    // The question box, for Ask. prefill puts a question in it to edit and send, such as Why? on a finding.
+    ask: {onSend: (question: string) => void; busy: boolean; prefill: {text: string; id: number} | null} | null;
     onClose: () => void; // stops a running answer too
 }) {
     const end = useRef<HTMLDivElement>(null);
@@ -28,7 +29,7 @@ export function ClaudePanel({title, turns, ask, onClose}: {
                 {turns.map(turn => <TurnView key={turn.taskId} turn={turn} showAsk={ask !== null}/>)}
                 <div ref={end}/>
             </div>
-            {ask && <AskBox busy={ask.busy} onSend={ask.onSend} onClose={onClose}/>}
+            {ask && <AskBox key={ask.prefill?.id ?? 0} initial={ask.prefill?.text ?? ''} busy={ask.busy} onSend={ask.onSend} onClose={onClose}/>}
         </aside>
     );
 }
@@ -73,8 +74,8 @@ function PartView({part}: {part: ClaudePart}) {
 }
 
 // AskBox: Enter sends, ⇧Enter starts a new line, Esc closes the panel.
-function AskBox({busy, onSend, onClose}: {busy: boolean; onSend: (question: string) => void; onClose: () => void}) {
-    const [question, setQuestion] = useState('');
+function AskBox({initial, busy, onSend, onClose}: {initial: string; busy: boolean; onSend: (question: string) => void; onClose: () => void}) {
+    const [question, setQuestion] = useState(initial);
     return (
         <div className="claude-ask-box">
             <textarea

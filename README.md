@@ -121,7 +121,7 @@ Nothing you draft reaches GitHub until you finish the review.
 - Press `⌘↵` (or **Finish review**) to choose Comment, Approve or Request changes, write a summary, and post it with every draft in one review. Requesting changes needs a summary or a draft. On your own pull request GitHub only lets you comment. If GitHub refuses the review, nothing is posted, your drafts stay, and the sheet shows what GitHub said.
 - For a commit or branch, Finish offers **Copy summary** (Markdown with your notes and drafts) and **Export patch**.
 
-### Claude: brief, Explain and Ask
+### Claude: brief, findings, Explain and Ask
 
 When [Claude Code](https://claude.com/claude-code) (`claude`) is installed, opening a pull request or a branch asks Claude for a brief in the background. Nothing shows when `claude` is not installed.
 
@@ -129,8 +129,16 @@ When [Claude Code](https://claude.com/claude-code) (`claude`) is installed, open
 - Files Claude thinks are risky get a dot in the tree; hover it for why. When the brief splits the change into steps, **To review** is grouped by them.
 - Press `e` and Claude explains the hunk around the line you clicked (or the first hunk in view) in a panel on the right, as it writes, with a line for each file it reads. `Esc` stops it and closes the panel.
 - Press `a` to ask Claude about the change. The panel keeps the conversation for this head while the app runs; a push starts a new one. `Enter` sends, `⇧Enter` starts a new line, `Esc` stops Claude and closes the panel.
-- Claude reads a read-only checkout of the head commit, with only its Read, Grep and Glob tools, and treats the pull request's text and diff as untrusted data. The checkout is removed when the review closes or the app quits. A brief or an explanation is kept on this machine per commit and model, so opening the same head again costs nothing; **Re-run Claude brief** in `⌘K` writes it again. A brief may spend up to $1, an explanation $0.50, and a question in Ask $1.
-- In `⌘K`: **Claude model…** picks the model for each of the brief, Explain and Ask (Opus 5.5 by default), and **No AI for this repository** turns Claude off for the repository you are in.
+- Once the brief is done, Claude looks for findings: possible bugs, risks, missing tests and nits, each under its line in a dashed **Claude · possible bug** card. Only findings on a line GitHub takes a comment on are shown. Press `f` or `⇧F` to go to the next or previous one, `y` to accept it as a draft comment you can edit, `d` to dismiss it, or click **Why?** to ask Claude about it in the Ask panel. Accepted and dismissed findings stay hidden for that head. A branch review gets findings too.
+- When a push changed files after you reviewed them, the brief starts with a short **Since your review** summary, and each open thread gets Claude's read: looks addressed, not addressed, or unclear, with the code that shows it. Claude never resolves a thread; the **Resolve** button stays yours.
+- In a draft comment, `⌘⇧P` asks Claude to polish it. The rewrite shows as a word diff against your words; **Accept** takes it, **Keep mine** drops it.
+- In the Finish sheet, **Draft summary with Claude** fills the summary from your draft comments and verdict, for you to edit. It never submits.
+- Claude reads a read-only checkout of the head commit, with only its Read, Grep and Glob tools (none for polish and summaries), and treats the pull request's text and diff as untrusted data. The checkout is removed when the review closes or the app quits. A brief, findings or an explanation is kept on this machine per commit and model, so opening the same head again costs nothing; **Re-run Claude brief** in `⌘K` writes the brief and findings again. A brief may spend up to $1, findings $2, the since-your-review read $0.50, an explanation $0.50, a question in Ask $1, a polish or summary $0.10, and a PR description $0.50.
+- In `⌘K`: **Claude model…** picks the model for each kind of Claude task (Opus 5.5 by default), and **No AI for this repository** turns Claude off for the repository you are in.
+
+### Open a pull request after reviewing your branch
+
+When you review your own branch, the Finish sheet also offers to open its pull request. **Draft PR description** asks Claude for a title and description you can edit. **Create pull request…** shows exactly what will be created (base, branch, title and description) and runs `gh pr create` only when you confirm. The app never pushes: if origin does not have the commits you reviewed, it says so and offers nothing until you push.
 
 ## Keyboard shortcuts
 
@@ -154,6 +162,10 @@ Press `?` in the app to see this list.
 | `⇧B` | Show or hide Claude's brief |
 | `e` | Claude explains the hunk around the line you clicked, or the first hunk in view |
 | `a` | Ask Claude about the change |
+| `f` `⇧F` | Next or previous Claude finding |
+| `y` | Accept the focused finding as a draft comment you can edit |
+| `d` | Dismiss the focused finding for this head |
+| `⌘⇧P` | In a draft comment, Claude polishes it; you accept or keep yours |
 | `[` `]` | Previous or next hunk |
 | `v` | Split or unified view |
 | `b` | Ignore whitespace |

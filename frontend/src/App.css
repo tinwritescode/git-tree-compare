@@ -2518,3 +2518,139 @@ button:disabled {
     font-size: 13px;
     resize: none;
 }
+
+/* Claude in the review: findings under their line, Claude's read on a thread, a polished draft,
+   and the self-review's pull request. All carry the dashed accent of .claude-answer. */
+.finding {
+    max-width: 720px;
+    margin: 4px 0;
+    font-family: var(--font-ui);
+    white-space: normal;
+    cursor: default;
+}
+
+.finding.focused {
+    box-shadow: 0 0 0 2px var(--focus);
+}
+
+.finding-title {
+    margin: 2px 0;
+    font-weight: 600;
+}
+
+.thread-check {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 6px;
+    margin-top: 6px;
+    padding: 4px 8px;
+    border: 1px dashed var(--accent);
+    border-radius: var(--radius);
+    font-size: 13px;
+    white-space: normal;
+}
+
+.thread-check-chip {
+    color: var(--accent-text);
+    font-weight: 600;
+}
+
+.thread-check.not_addressed .thread-check-chip {
+    color: var(--del);
+}
+
+.thread-check-evidence {
+    overflow-wrap: anywhere;
+}
+
+.thread-check-hint {
+    color: var(--text-dim);
+}
+
+.polish {
+    margin-top: 4px;
+}
+
+.polish-diff {
+    margin: 4px 0;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.polish-del {
+    background: var(--word-del);
+    text-decoration: line-through;
+}
+
+.polish-add {
+    background: var(--word-add);
+}
+
+.finish-claude {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-top: 6px;
+}
+
+.brief-since {
+    padding-bottom: 4px;
+}
+
+.brief-note-inline {
+    margin: 0;
+    color: var(--text-dim);
+}
+
+.self-review {
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border);
+}
+
+.self-review-head {
+    margin-bottom: 6px;
+    font-weight: 600;
+    overflow-wrap: anywhere;
+}
+
+.self-review-title {
+    box-sizing: border-box;
+    width: 100%;
+    margin-bottom: 6px;
+    padding: 6px 8px;
+    background: var(--btn-bg);
+    color: inherit;
+    border: 1px solid var(--btn-border);
+    border-radius: var(--radius);
+    font: inherit;
+    font-size: 13px;
+}
+
+.self-review-confirm dl {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 4px 10px;
+    margin: 6px 0;
+    font-size: 13px;
+}
+
+.self-review-confirm dt {
+    color: var(--text-dim);
+}
+
+.self-review-confirm dd {
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+
+.self-review-confirm pre {
+    max-height: 200px;
+    margin: 0;
+    overflow: auto;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    white-space: pre-wrap;
+}

@@ -4,8 +4,12 @@ import {type BriefState, type RiskLevel} from './claude';
 
 const LEVEL_LABEL: Record<RiskLevel, string> = {low: 'low', med: 'medium', high: 'high'};
 
-export function BriefCard({state, open, onToggle, onOpenFile}: {
+// SinceNote is the re-review's summary of what a push changed since the reviewer's review.
+export type SinceNote = {kind: 'running'} | {kind: 'ready'; summary: string} | {kind: 'error'; message: string};
+
+export function BriefCard({state, since, open, onToggle, onOpenFile}: {
     state: Exclude<BriefState, {kind: 'off'}>;
+    since: SinceNote | null; // shown first, when a push landed after the reviewer's review
     open: boolean;
     onToggle: () => void;
     onOpenFile: (path: string) => void;
@@ -17,8 +21,20 @@ export function BriefCard({state, open, onToggle, onOpenFile}: {
                 <span className="brief-title">Claude · brief</span>
                 {state.kind === 'ready' && state.costUsd !== null && <span className="brief-cost">${state.costUsd.toFixed(2)}</span>}
             </button>
+            {open && since && <SinceBody since={since}/>}
             {open && <BriefBody state={state} onOpenFile={onOpenFile}/>}
         </section>
+    );
+}
+
+function SinceBody({since}: {since: SinceNote}) {
+    return (
+        <div className="brief-body brief-since">
+            <div className="brief-label">Since your review</div>
+            {since.kind === 'running' && <p className="brief-note-inline">Claude is reading what changed since your review…</p>}
+            {since.kind === 'ready' && <p className="brief-summary">{since.summary}</p>}
+            {since.kind === 'error' && <p className="brief-error">Claude could not read what changed: {since.message}</p>}
+        </div>
     );
 }
 

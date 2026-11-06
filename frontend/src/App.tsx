@@ -2,10 +2,12 @@ import {Fragment, memo, type MouseEvent as ReactMouseEvent, type ReactNode, type
 import {useVirtualizer} from '@tanstack/react-virtual';
 import './App.css';
 import {
+    BranchPushState,
     CancelClaude,
     Changes,
     CheckUpdate,
     ClaudeStatus,
+    CreatePR,
     CurrentPRNumber,
     FindClone,
     Diff,
@@ -32,15 +34,24 @@ import {
     StartAsk,
     StartBrief,
     StartExplain,
+    StartFindings,
+    StartPolish,
+    StartPRDescription,
+    StartRereview,
+    StartReviewSummary,
     SubmitReview,
     TakePendingRepo,
 } from '../wailsjs/go/main/App';
 import {BrowserOpenURL, EventsOn} from '../wailsjs/runtime/runtime';
-import {BriefCard} from './brief';
+import {BriefCard, type SinceNote} from './brief';
 import {
     briefChip, type BriefRun, briefRunStep, briefState, CLAUDE_TASKS, type ClaudeEvent, type ClaudeModels, type ClaudeTaskKind, modelChoices, modelFor,
-    parseClaudeEvent, parseClaudeModels, parseRepoList, type RiskMark, riskMarks, TASK_LABEL,
+    parseClaudeEvent, parseClaudeModels, parsePRDescription, parseRepoList, type PRDescription, type RiskMark, riskMarks, TASK_LABEL,
 } from './claude';
+import {FindingCard, type FindingControls, ThreadCheckView} from './claude-review';
+import {acceptFinding, type Commentable, type Finding, nextFinding, parseFindings, parseSettled, shownFindings, whyQuestion} from './findings';
+import {parseRereview, sinceRanges, type ThreadCheck, threadTexts} from './rereview';
+import {type PushCheck} from './selfreview';
 import {askKey, askTurn, type Conversation, conversationStep, emptyConversation, startTurn, type Turn, turnStep} from './claude-chat';
 import {ClaudePanel} from './claude-panel';
 import {diffRows, type DiffRow, hunkFor, hunkOfRow, parseDiff, type Line, type SplitRow} from './diff';
@@ -50,10 +61,10 @@ import {paint, type Token} from './syntax';
 import {EditorMenu} from './editor-menu';
 import {Command, CommandPalette, CommandPanel, CommentBody, CommentsPanel, FileMenu, PRDiscussion, PRThread, QuickOpen, ThreadActions, type ThreadControls, UpdateBanner} from './panels';
 import {
-    addDraft, checkLineTarget, type Composer, deleteDraft, type Draft, draftCounts, editDraft, focusFor, parseDrafts, removeDrafts, rowTargets, type Side, staleNote,
-    toReviewDrafts, type Typing, typedFor, type Verdict, withoutTyped, withTyped,
+    addDraft, checkLineTarget, commentableLines, type Composer, deleteDraft, type Draft, draftCounts, editDraft, focusFor, parseDrafts, removeDrafts, rowTargets,
+    type Side, staleNote, toReviewDrafts, type Typing, typedFor, type Verdict, withoutTyped, withTyped,
 } from './drafts';
-import {type DraftControls, DraftStack, FinishSheet} from './finish';
+import {type DraftControls, DraftStack, FinishSheet, type Polisher} from './finish';
 import {type InboxRow, type LocalWork} from './inbox';
 import {PR, PRList, ReviewRuler} from './prs';
 import {RefPicker, type RefMode} from './ref-picker';
@@ -112,6 +123,9 @@ const localReviewKey = (repo: string, r: main.LocalReview) => `git-tree-compare:
 // The draft comments of a review are saved next to its record, so they survive a restart.
 const draftsKeyOf = (reviewStoreKey: string) => `${reviewStoreKey}:drafts`;
 
+// What the reviewer accepted or dismissed of Claude's findings, per review and head (askKey).
+const settledKey = (reviewHeadKey: string) => `git-tree-compare:findings:${reviewHeadKey}`;
+
 // newDraftId names a draft so it can be edited, deleted, and dropped once posted.
 function newDraftId(): string {
     return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -139,6 +153,18 @@ function runClaude({taskId, start, onEvent}: {taskId: string; start: () => Promi
         onEvent({kind: 'error', message: String(e)});
     });
     return off;
+}
+
+// claudeAnswer runs a task the reviewer asked for and resolves with its answer, or rejects with why it failed.
+function claudeAnswer({taskId, start}: {taskId: string; start: () => Promise<void>}): Promise<{json: unknown; text: string}> {
+    return new Promise((resolve, reject) => {
+        runClaude({
+            taskId, start, onEvent: event => {
+                if (event.kind === 'result') resolve(event);
+                else if (event.kind === 'error') reject(new Error(event.message));
+            },
+        });
+    });
 }
 
 // What is under review: an open pull request, or a commit or branch read from git alone.
@@ -202,7 +228,7 @@ function App() {
     const [searchOpen, setSearchOpen] = useState(false);
     const [searchQuery, setSearchQuery] = useState<SearchQuery>(emptyQuery); // kept until the pull request closes
     // A line to scroll to and flash once its file's diff is drawn, set by a search pick.
-    const [jump, setJump] = useState<{path: string; line: number; id: number} | null>(null);
+    const [jump, setJump] = useState<{path: string; side: Side; line: number; id: number} | null>(null);
     // A file shown whole for one visit because a search hit sat outside its diff. The saved setting is untouched.
     const [tempFull, setTempFull] = useState<string | null>(null);
     const [paletteOpen, setPaletteOpen] = useState(false);
@@ -213,6 +239,15 @@ function App() {
     const [briefRun, setBriefRun] = useState<BriefRun>({kind: 'off'});
     const [briefOpen, setBriefOpen] = useState(true);
     const [briefRerun, setBriefRerun] = useState<{head: string; n: number} | null>(null); // a head whose brief skips the kept one
+    const [findingsRun, setFindingsRun] = useState<BriefRun>({kind: 'off'}); // runs like the brief, once it is done
+    // Which lines of each file with findings take a comment, read for the scope they belong to.
+    const [findingLines, setFindingLines] = useState<{scope: typeof scope; lines: Commentable}>({scope: null, lines: {}});
+    const [settled, setSettled] = useState<string[]>([]); // keys of findings accepted or dismissed at this head
+    const [focusedFinding, setFocusedFinding] = useState<string | null>(null);
+    const [rereviewRun, setRereviewRun] = useState<BriefRun>({kind: 'off'}); // since your review, for a pull request pushed to after it
+    const [askPrefill, setAskPrefill] = useState<{text: string; id: number} | null>(null);
+    const [prDraft, setPrDraft] = useState<PRDescription & {drafted: boolean}>({title: '', body: '', drafted: false}); // a branch's pull request, before it is created
+    const [pushCheck, setPushCheck] = useState<PushCheck>({kind: 'checking'});
     const [claudePanel, setClaudePanel] = useState<ClaudePanelState | null>(null);
     // Ask conversations by askKey, kept while the app runs, so a review opened again carries on.
     const [conversations, setConversations] = useState<Record<string, Conversation>>({});
@@ -256,6 +291,8 @@ function App() {
     // Claude runs when it is installed and not turned off here. The brief is for pull requests and branches.
     const aiOn = !!claudeInfo?.installed && !noAIRepos.includes(repo);
     const briefModel = modelFor({models: claudeModels, kind: 'brief', fallback: claudeInfo?.defaultModel ?? ''});
+    const findingsModel = modelFor({models: claudeModels, kind: 'findings', fallback: claudeInfo?.defaultModel ?? ''});
+    const rereviewModel = modelFor({models: claudeModels, kind: 'rereview', fallback: claudeInfo?.defaultModel ?? ''});
     const briefWanted = aiOn && (pr !== null || local?.kind === 'branch');
     const conversationKey = commits ? askKey({repo, pr: pr?.number ?? null, base: commits.base, head: commits.head}) : null;
     const conversation = (conversationKey && conversations[conversationKey]) || emptyConversation;
@@ -263,6 +300,30 @@ function App() {
     const brief = useMemo(() => briefState({run: briefRun, paths: changedPaths}), [briefRun, changedPaths]);
     const shownBrief = brief.kind === 'ready' ? brief.brief : null;
     const risks = useMemo<Record<string, RiskMark>>(() => (shownBrief ? riskMarks(shownBrief) : {}), [shownBrief]);
+    // Findings and the re-review start once the brief is done, so they do not compete with it.
+    const briefDone = briefRun.kind === 'answered' || briefRun.kind === 'error';
+    // Null when Claude's answer is not a list of findings.
+    const parsedFindings = useMemo(
+        () => (findingsRun.kind === 'answered' ? parseFindings({value: findingsRun.json, paths: changedPaths}) : []),
+        [findingsRun, changedPaths],
+    );
+    const allFindings = useMemo(() => parsedFindings ?? [], [parsedFindings]);
+    const settledSet = useMemo(() => new Set(settled), [settled]);
+    const findings = useMemo(
+        () => shownFindings({findings: allFindings, commentable: findingLines.scope === scope ? findingLines.lines : {}, settled: settledSet}),
+        [allFindings, findingLines, scope, settledSet],
+    );
+    // Claude's read on each open thread, once a push landed after the reviewer's review.
+    const rereview = useMemo(() => {
+        if (rereviewRun.kind !== 'answered') return null;
+        const threadIds = new Set((discussion?.threads ?? []).map(t => t.id).filter(Boolean));
+        return parseRereview({value: rereviewRun.json, threadIds});
+    }, [rereviewRun, discussion]);
+    const threadChecks = useMemo<Readonly<Record<string, ThreadCheck>>>(() => rereview?.threads ?? {}, [rereview]);
+    const sinceNote: SinceNote | null = rereviewRun.kind === 'running' ? {kind: 'running'}
+        : rereviewRun.kind === 'error' ? {kind: 'error', message: rereviewRun.message}
+        : rereviewRun.kind === 'answered' ? (rereview ? {kind: 'ready', summary: rereview.summary} : {kind: 'error', message: 'Claude answered, but not with a summary.'})
+        : null;
     const sections = useMemo(
         () => groupByState({files: visibleChanges, record, chapters: shownBrief?.chapters ?? []}),
         [visibleChanges, record, shownBrief],
@@ -296,6 +357,9 @@ function App() {
     const unresolvedCount = Object.values(commentCounts).reduce((sum, n) => sum + n, 0);
     const draftCountByPath = useMemo(() => draftCounts(drafts), [drafts]);
     const fileDrafts = useMemo(() => (selected ? drafts.filter(d => d.path === selected.path) : []), [drafts, selected]);
+    const fileFindings = useMemo(() => (selected ? findings.filter(f => f.path === selected.path) : []), [findings, selected]);
+    // y and d act on the focused finding while its file is on screen.
+    const focusedOnScreen = fileFindings.find(f => f.key === focusedFinding) ?? null;
     const draftLabel = pr ? 'Draft · posts when you finish' : 'Draft · goes in the summary';
     const updateBanner = update && (
         <UpdateBanner
@@ -488,8 +552,14 @@ function App() {
     }
 
     // The diff view is memoised, so it gets stable controls that call the latest handlers.
-    const latest = useRef({replyToThread, resolveThread, saveComposer, closeComposer, removeDraft, composer, selectedPath: selected?.path});
-    latest.current = {replyToThread, resolveThread, saveComposer, closeComposer, removeDraft, composer, selectedPath: selected?.path};
+    const latest = useRef({
+        replyToThread, resolveThread, saveComposer, closeComposer, removeDraft, composer, selectedPath: selected?.path,
+        acceptFindingAsDraft, dismissFinding, askWhy, polishDraft,
+    });
+    latest.current = {
+        replyToThread, resolveThread, saveComposer, closeComposer, removeDraft, composer, selectedPath: selected?.path,
+        acceptFindingAsDraft, dismissFinding, askWhy, polishDraft,
+    };
     const threadControls = useMemo<ThreadControls>(() => ({
         reply: (id, body) => latest.current.replyToThread(id, body),
         resolve: (id, resolved) => latest.current.resolveThread(id, resolved),
@@ -507,6 +577,13 @@ function App() {
         },
         edit: id => setComposer({kind: 'edit', id}),
         remove: id => latest.current.removeDraft(id),
+        polish: aiOn ? (req => latest.current.polishDraft(req)) satisfies Polisher : null,
+    }), [aiOn]);
+    const findingControls = useMemo<FindingControls>(() => ({
+        focus: key => setFocusedFinding(key),
+        accept: key => latest.current.acceptFindingAsDraft(key),
+        dismiss: key => latest.current.dismissFinding(key),
+        why: key => latest.current.askWhy(key),
     }), []);
     const focusAt = useCallback((target: {side: Side; line: number}) => {
         const path = latest.current.selectedPath;
@@ -605,7 +682,7 @@ function App() {
         if (!file) return;
         setSearchOpen(false);
         setSelected(file);
-        setJump({path: hit.path, line: hit.line, id: Date.now()});
+        setJump({path: hit.path, side: 'RIGHT', line: hit.line, id: Date.now()});
     }
 
     function closeReview() {
@@ -763,6 +840,7 @@ function App() {
         setFocusLine(null);
         setSummary('');
         setVerdict('COMMENT');
+        setPrDraft({title: '', body: '', drafted: false});
     }, [repo, pr?.id, local?.base, local?.head]);
 
     // What GitHub says is viewed, on open and on every poll. Marks made here still wait their turn,
@@ -868,6 +946,97 @@ function App() {
             CancelClaude(id).finally(() => ReleaseClaude(repo)).catch(() => {});
         };
     }, [briefWanted, repo, commits?.base, commits?.head, pr?.number, briefModel, briefRerun]);
+
+    // Findings, once the brief is done, for the same pull request or branch. A re-run of the brief
+    // asks for them again too.
+    useEffect(() => {
+        if (!briefWanted || !commits || !briefDone) {
+            setFindingsRun({kind: 'off'});
+            return;
+        }
+        const id = `findings-${newDraftId()}`;
+        setFindingsRun({kind: 'running', reading: null});
+        const off = runClaude({
+            taskId: id,
+            start: () => StartFindings(id, changeRef({kind: 'findings', commits, fresh: briefRerun?.head === commits.head})),
+            onEvent: event => setFindingsRun(run => briefRunStep(run, event)),
+        });
+        return () => {
+            off();
+            CancelClaude(id).catch(() => {});
+        };
+    }, [briefWanted, briefDone, repo, commits?.base, commits?.head, pr?.number, findingsModel, briefRerun]);
+
+    // Which lines take a comment in each file with findings: a finding elsewhere is dropped.
+    useEffect(() => {
+        if (!scope) return;
+        const known = findingLines.scope === scope ? findingLines.lines : {};
+        const missing = [...new Set(allFindings.map(f => f.path))].filter(path => !(path in known));
+        if (!missing.length) return;
+        let cancelled = false;
+        Promise.all(missing.map(path => Diff({...scope, fullFile: false}, path)
+            .then(text => [path, commentableLines(parseDiff(text))] as const)
+            .catch(() => [path, {RIGHT: new Set<number>(), LEFT: new Set<number>()}] as const)))
+            .then(found => {
+                if (cancelled) return;
+                setFindingLines(prev => ({scope, lines: {...(prev.scope === scope ? prev.lines : {}), ...Object.fromEntries(found)}}));
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [scope, allFindings]);
+
+    // The findings settled at this head, saved so they stay settled after a restart.
+    useEffect(() => {
+        setSettled(conversationKey ? parseSettled(readStore<unknown>(settledKey(conversationKey), [])) : []);
+        setFocusedFinding(null);
+    }, [conversationKey]);
+
+    // Since your review: once the brief is done, when a push changed files the reviewer had
+    // reviewed. It reads the ranges and threads as they are when it starts, and keeps its answer for
+    // this head as the reviewer marks those files again.
+    const rereviewInput = useRef<{since: {path: string; from: string}[]; threads: main.ThreadText[]}>({since: [], threads: []});
+    rereviewInput.current = {
+        since: pr && commits ? sinceRanges({paths: changes.map(c => c.path), record, heads: reviewedHeads, head: commits.head}) : [],
+        threads: threadTexts(discussion?.threads ?? []),
+    };
+    const hasSince = rereviewInput.current.since.length > 0;
+    const discussionRead = discussion !== null;
+    useEffect(() => {
+        if (!aiOn || !pr || !commits || !briefDone || !discussionRead) {
+            setRereviewRun({kind: 'off'});
+            return;
+        }
+        if (!hasSince) return;
+        const {since, threads} = rereviewInput.current;
+        const id = `rereview-${newDraftId()}`;
+        setRereviewRun({kind: 'running', reading: null});
+        const off = runClaude({
+            taskId: id,
+            start: () => StartRereview(id, main.RereviewRequest.createFrom({
+                change: changeRef({kind: 'rereview', commits, fresh: briefRerun?.head === commits.head}), prUrl: pr.url, since, threads,
+            })),
+            onEvent: event => setRereviewRun(run => briefRunStep(run, event)),
+        });
+        return () => {
+            off();
+            CancelClaude(id).catch(() => {});
+            setRereviewRun(run => (run.kind === 'running' ? {kind: 'off'} : run));
+        };
+    }, [aiOn, pr?.number, commits?.base, commits?.head, briefDone, discussionRead, hasSince, rereviewModel, briefRerun]);
+
+    // Whether origin has the branch's reviewed commits, checked as the Finish sheet opens on a branch.
+    useEffect(() => {
+        if (!finishOpen || !local?.branch) return;
+        let cancelled = false;
+        setPushCheck({kind: 'checking'});
+        BranchPushState(repo, local.branch, local.head)
+            .then(state => !cancelled && setPushCheck(state.pushed ? {kind: 'pushed'} : {kind: 'not-pushed', message: state.message}))
+            .catch(e => !cancelled && setPushCheck({kind: 'not-pushed', message: String(e)}));
+        return () => {
+            cancelled = true;
+        };
+    }, [finishOpen, repo, local?.branch, local?.head]);
 
     // With nothing selected, the first file in the order on screen opens, before the frame is drawn.
     useLayoutEffect(() => {
@@ -1027,8 +1196,12 @@ function App() {
                     return;
                 }
                 case 'Escape':
-                    if (picked.length) setPicked([]);
-                    else setFocusLine(null);
+                    if (picked.length) {
+                        setPicked([]);
+                    } else {
+                        setFocusLine(null);
+                        setFocusedFinding(null);
+                    }
                     return;
                 case 'p':
                     closeReview();
@@ -1065,6 +1238,16 @@ function App() {
                     return;
                 case 'e':
                     explainHunk();
+                    return;
+                case 'f':
+                case 'F':
+                    if (aiOn) goFinding(e.key === 'f' ? 1 : -1);
+                    return;
+                case 'y':
+                    if (focusedOnScreen) acceptFindingAsDraft(focusedOnScreen.key);
+                    return;
+                case 'd':
+                    if (focusedOnScreen) dismissFinding(focusedOnScreen.key);
                     return;
                 case 'a':
                     if (aiOn) {
@@ -1269,6 +1452,123 @@ function App() {
         if (commits) setBriefRerun(r => ({head: commits.head, n: (r?.n ?? 0) + 1}));
     }
 
+    // f and ⇧F: the next or previous finding, from the focused one, else the focused line, else the
+    // top of the file on screen.
+    function goFinding(step: 1 | -1) {
+        if (!findings.length) {
+            showFlash(findingsRun.kind === 'running' ? 'Claude is still looking for findings.' : 'No Claude findings to show.');
+            return;
+        }
+        const focused = findings.find(f => f.key === focusedFinding);
+        const from = focused ?? (focusLine && focusLine.path === selected?.path ? focusLine : selected ? {path: selected.path, line: 0} : null);
+        const next = nextFinding({findings, order: rulerFiles.map(f => f.path), from, step});
+        if (next) showFinding(next);
+    }
+
+    function showFinding(f: Finding) {
+        const file = changes.find(c => c.path === f.path);
+        if (!file) return;
+        setFocusedFinding(f.key);
+        if (selected?.path !== f.path) {
+            setSelected(file);
+            setPicked([]);
+        }
+        setFocusLine({path: f.path, side: f.side, line: f.line});
+        setJump({path: f.path, side: f.side, line: f.line, id: Date.now()});
+    }
+
+    // settleFinding hides a finding at this head, after an accept or a dismiss, and saves that.
+    function settleFinding(key: string) {
+        const next = [...settled, key];
+        setSettled(next);
+        if (conversationKey) writeStore(settledKey(conversationKey), next);
+        setFocusedFinding(f => (f === key ? null : f));
+    }
+
+    // y: the finding becomes a line draft, opened for the reviewer to edit before it posts.
+    function acceptFindingAsDraft(key: string) {
+        const finding = findings.find(f => f.key === key);
+        const store = draftsRef.current?.key;
+        if (!finding || !store) return;
+        const draft = acceptFinding(finding, {id: newDraftId(), head: commits?.head ?? null});
+        changeDrafts(store, d => addDraft(d, draft));
+        settleFinding(key);
+        if (finding.path === selected?.path) setComposer({kind: 'edit', id: draft.id});
+        showFlash(pr ? 'The finding is now a draft comment. Edit it; it posts when you finish.' : 'The finding is now a draft comment.');
+    }
+
+    // d: the finding stays hidden at this head.
+    function dismissFinding(key: string) {
+        settleFinding(key);
+        showFlash('Dismissed. It stays hidden for this head.');
+    }
+
+    // Why? asks Claude about the finding in the Ask panel, with the question ready to edit and send.
+    function askWhy(key: string) {
+        const finding = findings.find(f => f.key === key);
+        if (!finding) return;
+        setFocusedFinding(key);
+        setAskPrefill({text: whyQuestion(finding), id: Date.now()});
+        openAsk();
+    }
+
+    // polishDraft asks Claude to rewrite a draft, for the editor to show beside the reviewer's words.
+    function polishDraft({body, onEvent}: {body: string; onEvent: (event: ClaudeEvent) => void}): () => void {
+        if (!commits) {
+            onEvent({kind: 'error', message: 'No review is open.'});
+            return () => {};
+        }
+        const taskId = `polish-${newDraftId()}`;
+        const off = runClaude({
+            taskId,
+            start: () => StartPolish(taskId, main.PolishRequest.createFrom({change: changeRef({kind: 'polish', commits, fresh: false}), body})),
+            onEvent,
+        });
+        return () => {
+            off();
+            CancelClaude(taskId).catch(() => {});
+        };
+    }
+
+    // The Finish sheet's summary, drafted by Claude from the drafts and verdict. It never submits.
+    async function draftSummary(): Promise<string> {
+        if (!commits) throw new Error('No review is open.');
+        const taskId = `summary-${newDraftId()}`;
+        const answer = await claudeAnswer({
+            taskId,
+            start: () => StartReviewSummary(taskId, main.SummaryRequest.createFrom({
+                change: changeRef({kind: 'summary', commits, fresh: false}), verdict, drafts: toReviewDrafts(drafts),
+            })),
+        });
+        const text = answer.text.trim();
+        if (!text) throw new Error('Claude answered with nothing.');
+        return text;
+    }
+
+    // A title and description for the branch's pull request, drafted by Claude. Asking again skips the kept one.
+    async function draftPRDescription() {
+        if (!commits) return;
+        const taskId = `prdesc-${newDraftId()}`;
+        const answer = await claudeAnswer({
+            taskId,
+            start: () => StartPRDescription(taskId, changeRef({kind: 'prdesc', commits, fresh: prDraft.drafted})),
+        });
+        const description = parsePRDescription(answer.json);
+        if (!description) throw new Error('Claude answered, but not with a title and description.');
+        setPrDraft({...description, drafted: true});
+    }
+
+    // Opens the branch's pull request once the reviewer confirmed it. The backend checks the push again.
+    async function createPullRequest(): Promise<string> {
+        if (!local?.branch || !local.baseBranch) throw new Error('This review is not of a branch.');
+        const url = await CreatePR(repo, main.PRCreateRequest.createFrom({
+            base: local.baseBranch, branch: local.branch, head: local.head, title: prDraft.title, body: prDraft.body,
+        }));
+        showFlash(`Opened ${url}`);
+        setPollTick(t => t + 1);
+        return url;
+    }
+
     // e: Claude explains the hunk around the focused line, or the first hunk in view.
     function explainHunk() {
         if (!aiOn || !commits || !selected || diffPath !== selected.path) return;
@@ -1302,6 +1602,7 @@ function App() {
         const taskId = `ask-${newDraftId()}`;
         const asked = askTurn({conversation, taskId, question, newSessionId: newUUID});
         if (!asked) return;
+        setAskPrefill(null);
         setConversations(all => ({...all, [key]: asked.conversation}));
         runClaude({
             taskId,
@@ -1325,6 +1626,7 @@ function App() {
     function closeClaudePanel() {
         stopClaude();
         setClaudePanel(null);
+        setAskPrefill(null);
     }
 
     function setClaudeModel(kind: ClaudeTaskKind, model: string) {
@@ -1372,6 +1674,8 @@ function App() {
         ...(aiOn && reviewing ? [
             {id: 'explain', label: 'Explain this hunk with Claude', hint: 'e', run: explainHunk},
             {id: 'ask', label: 'Ask Claude about this change', hint: 'a', run: openAsk},
+            {id: 'finding-next', label: 'Next Claude finding', hint: 'f', run: () => goFinding(1)},
+            {id: 'finding-prev', label: 'Previous Claude finding', hint: '⇧F', run: () => goFinding(-1)},
         ] : []),
         ...(aiOn ? [{id: 'model', label: 'Claude model…', run: () => {
             setPaletteMode('model');
@@ -1422,7 +1726,7 @@ function App() {
                     onClose={() => setFinishOpen(false)}
                     mode={pr ? {
                         kind: 'pr', isMine: pr.isMine, verdict, body: summary, onVerdict: setVerdict, onBody: setSummary, onSubmit: submitReview,
-                        staleNote: commits ? staleNote(drafts, commits.head) : null,
+                        staleNote: commits ? staleNote(drafts, commits.head) : null, onDraftSummary: aiOn ? draftSummary : null,
                     } : {
                         kind: 'local',
                         onCopySummary: () => {
@@ -1430,6 +1734,12 @@ function App() {
                             setFinishOpen(false);
                         },
                         onExportPatch: exportPatch,
+                        selfReview: local?.branch && local.baseBranch ? {
+                            branch: local.branch, base: local.baseBranch, push: pushCheck, title: prDraft.title, body: prDraft.body, drafted: prDraft.drafted,
+                            onTitle: title => setPrDraft(d => ({...d, title, drafted: false})),
+                            onBody: body => setPrDraft(d => ({...d, body, drafted: false})),
+                            onDraft: aiOn ? draftPRDescription : null, onCreate: createPullRequest, onOpenURL: BrowserOpenURL,
+                        } : null,
                     }}
                 />
             )}
@@ -1556,6 +1866,19 @@ function App() {
                                 {briefChip(brief)}
                             </button>
                         )}
+                        {findingsRun.kind !== 'off' && (
+                            <button
+                                type="button"
+                                className={`claude-chip ${findingsRun.kind === 'answered' && parsedFindings === null ? 'error' : findingsRun.kind}`}
+                                onClick={() => goFinding(1)}
+                                title={findingsRun.kind === 'error' ? findingsRun.message : 'Go to the next finding (f)'}
+                                aria-live="polite"
+                            >
+                                {findingsRun.kind === 'running' ? 'Claude checking for issues…'
+                                    : findingsRun.kind === 'error' || parsedFindings === null ? 'Findings failed'
+                                    : `${findings.length} finding${findings.length === 1 ? '' : 's'}`}
+                            </button>
+                        )}
                         <span className="review-count" title="Files reviewed, and files a push changed after you reviewed them">
                             {progressText({reviewed: reviewedCount, total: changes.length, changed: changedSinceReview.size})}
                         </span>
@@ -1674,6 +1997,7 @@ function App() {
                                     discussion={discussion}
                                     loading={commentsLoading}
                                     controls={threadControls}
+                                    checks={threadChecks}
                                     onOpenFile={openCommentFile}
                                     onOpenURL={BrowserOpenURL}
                                     onRefresh={loadComments}
@@ -1689,7 +2013,7 @@ function App() {
                                 />
                             )}
                             {brief.kind !== 'off' && (
-                                <BriefCard state={brief} open={briefOpen} onToggle={() => setBriefOpen(v => !v)} onOpenFile={openCommentFile}/>
+                                <BriefCard state={brief} since={sinceNote} open={briefOpen} onToggle={() => setBriefOpen(v => !v)} onOpenFile={openCommentFile}/>
                             )}
                             {selected
                                 ? <DiffPanel
@@ -1727,6 +2051,10 @@ function App() {
                                     onAddNoteToReview={() => addNoteToReview(selected.path)}
                                     draftControls={draftControls}
                                     threadControls={pr ? threadControls : null}
+                                    threadChecks={threadChecks}
+                                    findings={fileFindings}
+                                    focusedFinding={focusedFinding}
+                                    findingControls={findingControls}
                                 />
                                 : <Empty title="No file selected" hint="Choose a file in the tree to see its diff."/>}
                         </main>
@@ -1737,7 +2065,7 @@ function App() {
                             <ClaudePanel
                                 title="ask"
                                 turns={conversation.turns}
-                                ask={{onSend: askClaude, busy: conversation.turns.some(t => t.status.kind === 'running')}}
+                                ask={{onSend: askClaude, busy: conversation.turns.some(t => t.status.kind === 'running'), prefill: askPrefill}}
                                 onClose={closeClaudePanel}
                             />
                         )}
@@ -1943,7 +2271,7 @@ function DiffPanel(props: {
     prFileURL: string;
     threads: PRThread[];
     onOpenURL: (url: string) => void;
-    jump: {line: number; id: number} | null;
+    jump: {side: Side; line: number; id: number} | null;
     onJumpOutside: () => void; // the jump line is not in this diff
     since: DiffRange['kind'] | null; // the range shown, when the file changed since your review
     onToggleSince: () => void;
@@ -1958,6 +2286,10 @@ function DiffPanel(props: {
     onAddNoteToReview: () => void;
     draftControls: DraftControls;
     threadControls: ThreadControls | null;
+    threadChecks: Readonly<Record<string, ThreadCheck>>;
+    findings: Finding[]; // this file's findings
+    focusedFinding: string | null;
+    findingControls: FindingControls;
 }) {
     const {file, text, split, note, noteOpen, composer} = props;
     const fileLevel = props.drafts.filter(d => d.kind === 'file');
@@ -2048,6 +2380,10 @@ function DiffPanel(props: {
                 onFocusLine={props.onFocusLine}
                 draftControls={props.draftControls}
                 threadControls={props.threadControls}
+                threadChecks={props.threadChecks}
+                findings={props.findings}
+                focusedFinding={props.focusedFinding}
+                findingControls={props.findingControls}
             />
         </>
     );
@@ -2059,6 +2395,7 @@ export type DiffHandle = {moveHunk: (step: number) => void; hunkInView: () => nu
 const ROW_HEIGHT = 24; // a diff line, matching .diff-body's line-height; only rows with threads are measured
 const THREAD_HEIGHT = 96; // a guess for a row's review threads until the row is measured
 const DRAFT_HEIGHT = 84; // a guess for a draft or its editor under a row, until the row is measured
+const FINDING_HEIGHT = 120; // a guess for a Claude finding under a row, until the row is measured
 const HEADER_HEIGHT = 48; // the sticky file header, which a row scrolled to the top must clear
 const BODY_PADDING = 6;
 const GUTTERS_WIDTH = 114; // two line-number gutters, the sign and the right padding of a unified line
@@ -2069,13 +2406,14 @@ const GUTTERS_WIDTH = 114; // two line-number gutters, the sign and the right pa
 // It is memoised: a diff can be thousands of lines, and most app state never touches it.
 const DiffView = memo(function DiffView({
     text, path, split, threads, onOpenURL, jump, onJumpOutside, ref, drafts, draftLabel, composer, focus, onFocusLine, draftControls, threadControls,
+    threadChecks, findings, focusedFinding, findingControls,
 }: {
     text: string;
     path: string; // picks the language for syntax colours
     split: boolean;
     threads: PRThread[];
     onOpenURL: (url: string) => void;
-    jump: {line: number; id: number} | null; // a new-side line to scroll to and flash
+    jump: {side: Side; line: number; id: number} | null; // a line to scroll to and flash
     onJumpOutside?: () => void; // asks for the whole file when the line is not in this diff
     ref?: Ref<DiffHandle>;
     drafts: Draft[]; // line drafts are drawn under their line
@@ -2085,6 +2423,10 @@ const DiffView = memo(function DiffView({
     onFocusLine: (target: {side: Side; line: number}) => void;
     draftControls: DraftControls;
     threadControls: ThreadControls | null;
+    threadChecks: Readonly<Record<string, ThreadCheck>>; // Claude's read on threads, by id
+    findings: Finding[]; // Claude's findings, drawn under their line
+    focusedFinding: string | null;
+    findingControls: FindingControls;
 }) {
     const lines = useMemo(() => parseDiff(text), [text]);
     const rows = useMemo(() => diffRows(lines, split), [lines, split]);
@@ -2116,18 +2458,25 @@ const DiffView = memo(function DiffView({
         }
         return map;
     }, [drafts]);
+    const findingsAt = useMemo(() => {
+        const map = new Map<string, Finding[]>();
+        for (const f of findings) map.set(`${f.side}:${f.line}`, [...(map.get(`${f.side}:${f.line}`) ?? []), f]);
+        return map;
+    }, [findings]);
     const draftsOf = useCallback((row: DiffRow) => {
         const targets = rowTargets(row);
         return {
             targets,
             drafts: targets.flatMap(t => draftsAt.get(`${t.side}:${t.line}`) ?? []),
+            findings: targets.flatMap(t => findingsAt.get(`${t.side}:${t.line}`) ?? []),
             adding: composer?.kind === 'line' && targets.some(t => t.side === composer.side && t.line === composer.line),
         };
-    }, [draftsAt, composer]);
-    // Changes only with the rows, their threads or drafts, which is when the sizes must be estimated again.
+    }, [draftsAt, findingsAt, composer]);
+    // Changes only with the rows, their threads, drafts or findings, which is when the sizes must be estimated again.
     const estimateSize = useCallback((i: number) => {
         const extra = draftsOf(rows[i]);
-        return ROW_HEIGHT + threadsOf(rows[i]).length * THREAD_HEIGHT + (extra.drafts.length + (extra.adding ? 1 : 0)) * DRAFT_HEIGHT;
+        return ROW_HEIGHT + threadsOf(rows[i]).length * THREAD_HEIGHT + (extra.drafts.length + (extra.adding ? 1 : 0)) * DRAFT_HEIGHT
+            + extra.findings.length * FINDING_HEIGHT;
     }, [rows, threadsOf, draftsOf]);
     // The longest line sets the width, so the horizontal scroll does not change as rows come and go.
     const width = useMemo(() => {
@@ -2179,9 +2528,11 @@ const DiffView = memo(function DiffView({
     const [flash, setFlash] = useState<{index: number; id: number} | null>(null);
     useEffect(() => {
         if (!jump || jumped.current === jump.id || !lines.length) return;
-        const index = rows.findIndex(row => row.kind !== 'hunk' && row.newNo === jump.line);
+        const index = jump.side === 'LEFT'
+            ? rows.findIndex(row => rowTargets(row).some(t => t.side === 'LEFT' && t.line === jump.line))
+            : rows.findIndex(row => row.kind !== 'hunk' && row.newNo === jump.line);
         if (index < 0) {
-            if (!visibleLines.has(jump.line) && onJumpOutside) onJumpOutside();
+            if (jump.side === 'RIGHT' && !visibleLines.has(jump.line) && onJumpOutside) onJumpOutside();
             return;
         }
         jumped.current = jump.id;
@@ -2192,7 +2543,7 @@ const DiffView = memo(function DiffView({
 
     const orphanBlock = orphans.length > 0 && (
         <div className="thread-orphans">
-            {orphans.map((t, i) => <InlineThread key={`orphan-${i}`} thread={t} onOpenURL={onOpenURL} controls={threadControls}/>)}
+            {orphans.map((t, i) => <InlineThread key={`orphan-${i}`} thread={t} check={threadChecks[t.id]} onOpenURL={onOpenURL} controls={threadControls}/>)}
         </div>
     );
 
@@ -2224,18 +2575,25 @@ const DiffView = memo(function DiffView({
                             key={item.key}
                             data-index={item.index}
                             data-focus={focused}
-                            ref={rowThreads.length || extra.drafts.length || extra.adding ? virtualizer.measureElement : undefined}
+                            ref={rowThreads.length || extra.drafts.length || extra.findings.length || extra.adding ? virtualizer.measureElement : undefined}
                             className="diff-row"
                             style={{transform: `translateY(${item.start - scrollMargin}px)`}}
                             onClick={e => {
                                 // A click on a line focuses it for c; clicks in threads and drafts are theirs.
-                                if (!(e.target instanceof Element) || e.target.closest('.cmt-thread, .draft-stack')) return;
+                                if (!(e.target instanceof Element) || e.target.closest('.cmt-thread, .draft-stack, .finding')) return;
                                 const target = focusFor(row, e.target.closest('.half.left') ? 'left' : 'right');
                                 if (target) onFocusLine(target);
                             }}
                         >
                             <DiffRowView key={flashed} row={row} tokens={tokens} flashed={flashed > 0}/>
-                            {rowThreads.map((t, j) => <InlineThread key={`${item.index}-${j}`} thread={t} onOpenURL={onOpenURL} controls={threadControls}/>)}
+                            {rowThreads.map((t, j) => (
+                                <InlineThread key={`${item.index}-${j}`} thread={t} check={threadChecks[t.id]} onOpenURL={onOpenURL} controls={threadControls}/>
+                            ))}
+                            {extra.findings.length > 0 && (
+                                <div className="inline-drafts">
+                                    {extra.findings.map(f => <FindingCard key={f.key} finding={f} focused={f.key === focusedFinding} controls={findingControls}/>)}
+                                </div>
+                            )}
                             {(extra.drafts.length > 0 || extra.adding) && (
                                 <div className="inline-drafts">
                                     <DraftStack
@@ -2302,7 +2660,12 @@ function DiffRowView({row, tokens, flashed}: {row: DiffRow; tokens: Map<Line, To
 }
 
 // InlineThread is one review thread, drawn under the diff line it is attached to.
-function InlineThread({thread, onOpenURL, controls}: {thread: PRThread; onOpenURL: (url: string) => void; controls: ThreadControls | null}) {
+function InlineThread({thread, check, onOpenURL, controls}: {
+    thread: PRThread;
+    check: ThreadCheck | undefined; // Claude's read, when a push may have answered it
+    onOpenURL: (url: string) => void;
+    controls: ThreadControls | null;
+}) {
     return (
         <div className={`cmt-thread inline-thread${thread.resolved ? ' resolved' : ''}`}>
             <div className="cmt-meta">
@@ -2312,6 +2675,7 @@ function InlineThread({thread, onOpenURL, controls}: {thread: PRThread; onOpenUR
                 {thread.url && <Button variant="link"  onClick={() => onOpenURL(thread.url)}>Open on GitHub</Button>}
             </div>
             {thread.comments.map((c, i) => <CommentBody key={i} comment={c}/>)}
+            {check && <ThreadCheckView check={check}/>}
             {controls && <ThreadActions thread={thread} controls={controls}/>}
         </div>
     );
@@ -2397,6 +2761,10 @@ const SHORTCUT_GROUPS: {title: string; rows: [string, string][]}[] = [
         ['⇧B', "Show or hide Claude's brief"],
         ['e', 'Claude explains the hunk around the line you clicked, or the first hunk in view'],
         ['a', 'Ask Claude about this change'],
+        ['f ⇧F', "Next or previous Claude finding"],
+        ['y', 'Accept the focused finding as a draft comment you can edit'],
+        ['d', 'Dismiss the focused finding for this head'],
+        ['⌘⇧P', 'In a draft comment, Claude polishes it; you accept or keep yours'],
     ]},
     {title: 'Diff', rows: [
         ['[ ]', 'Previous or next hunk'],
