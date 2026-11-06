@@ -78,3 +78,34 @@ func TestParseCheckAttr(t *testing.T) {
 		t.Fatalf("generated = %v, want a and b", got)
 	}
 }
+
+func TestIsWhitespaceOnly(t *testing.T) {
+	cases := []struct {
+		plain, ignoringWS [2]int
+		want              bool
+	}{
+		{[2]int{1, 0}, [2]int{0, 0}, true},
+		{[2]int{0, 1}, [2]int{0, 0}, true},
+		{[2]int{0, 0}, [2]int{0, 0}, false}, // nothing changed, as for a pure rename
+		{[2]int{3, 0}, [2]int{1, 0}, false},
+		{[2]int{0, 3}, [2]int{0, 1}, false},
+	}
+	for _, c := range cases {
+		if got := isWhitespaceOnly(c.plain, c.ignoringWS); got != c.want {
+			t.Errorf("isWhitespaceOnly(%v, %v) = %v, want %v", c.plain, c.ignoringWS, got, c.want)
+		}
+	}
+}
+
+// The attributes come from the head commit, not from the working tree, even for one file.
+func TestMarkGeneratedReadsTheHeadsAttributes(t *testing.T) {
+	s := noiseRepo(t)
+	writeFile(t, s.Repo+"/.gitattributes", "")
+	changes := []FileChange{{Path: "gen/api.txt"}}
+	if err := markGenerated(s.Repo, s.Head, changes); err != nil {
+		t.Fatal(err)
+	}
+	if !changes[0].Generated {
+		t.Fatal("gen/api.txt is generated at head")
+	}
+}

@@ -13,7 +13,8 @@ describe('turnStep', () => {
             {kind: 'text', delta: 'the callers.'},
             {kind: 'tool', name: 'Read', path: 'pkg/limit.go'},
             {kind: 'tool', name: 'Grep', path: null},
-            {kind: 'text', delta: '`limit` returns 42.'},
+            {kind: 'text', delta: '`limit` '},
+            {kind: 'text', delta: 'returns 42.'},
             {kind: 'result', json: null, text: '`limit` returns 42.', costUsd: 0.02},
         ]);
         expect(got.parts).toEqual([
@@ -23,6 +24,11 @@ describe('turnStep', () => {
             {kind: 'text', text: '`limit` returns 42.'},
         ]);
         expect(got.status).toEqual({kind: 'done', costUsd: 0.02});
+    });
+
+    it('does not repeat a streamed answer when its result arrives', () => {
+        const got = run(turn, [{kind: 'text', delta: 'Streamed.'}, {kind: 'result', json: null, text: 'Streamed.', costUsd: null}]);
+        expect(got.parts).toEqual([{kind: 'text', text: 'Streamed.'}]);
     });
 
     it('shows a kept answer, which arrives as a result alone', () => {
@@ -121,6 +127,12 @@ describe('textBlocks', () => {
             {kind: 'para', spans: [{kind: 'text', text: 'Done.'}]},
         ]);
         expect(textBlocks('```\nhalf')).toEqual([{kind: 'code', text: 'half'}]);
+    });
+
+    it('marks inline code at the start and end of a paragraph, with no empty text around it', () => {
+        expect(textBlocks('`a` and `b`')).toEqual([
+            {kind: 'para', spans: [{kind: 'code', text: 'a'}, {kind: 'text', text: ' and '}, {kind: 'code', text: 'b'}]},
+        ]);
     });
 
     it('leaves a lone backtick as text, and markup as text', () => {

@@ -119,6 +119,12 @@ func TestAskTaskRejectsAnEmptyQuestionAndABadSession(t *testing.T) {
 	if _, err := askTask("ask-1", AskRequest{Change: change, Session: testSession, Question: "  \n"}); err == nil {
 		t.Error("an empty question was accepted")
 	}
+	if _, err := askTask("ask-1", AskRequest{Change: change, Session: testSession, Question: strings.Repeat("q", maxQuestion)}); err != nil {
+		t.Errorf("a question of the largest size was rejected: %v", err)
+	}
+	if _, err := askTask("ask-1", AskRequest{Change: change, Session: testSession, Question: strings.Repeat("q", maxQuestion+1)}); err == nil {
+		t.Error("a question over the largest size was accepted")
+	}
 	task, err := askTask("ask-1", AskRequest{Change: change, Session: "--continue", Resume: true, Question: "Why?"})
 	if err == nil && validateTask(task) == nil {
 		t.Error("a session id that is a flag was accepted")

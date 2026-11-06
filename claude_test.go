@@ -82,6 +82,15 @@ func TestValidateTaskRejectsWhatCouldReachClaudeAsAFlag(t *testing.T) {
 	if err := validateTask(testTask()); err != nil {
 		t.Fatalf("a good task was rejected: %v", err)
 	}
+	atMost := testTask()
+	atMost.BudgetUSD = maxClaudeBudgetUSD
+	if err := validateTask(atMost); err != nil {
+		t.Fatalf("the largest budget was rejected: %v", err)
+	}
+	atMost.BudgetUSD = maxClaudeBudgetUSD + 0.01
+	if err := validateTask(atMost); err == nil {
+		t.Fatal("a budget over the largest was accepted")
+	}
 }
 
 func TestCacheKeyChangesWithEachPart(t *testing.T) {
@@ -273,6 +282,23 @@ func TestRunnerReportsWhatClaudeSaidWhenItFailsWithoutAResult(t *testing.T) {
 	got := rec.all()
 	if len(got) != 1 || got[0].Kind != "error" || !strings.Contains(got[0].Message, "Invalid API key") {
 		t.Fatalf("events = %+v", got)
+	}
+}
+
+func TestClaudeFailureSaysWhyClaudeEnded(t *testing.T) {
+	cases := []struct {
+		err    error
+		stderr string
+		want   string
+	}{
+		{fmt.Errorf("exit status 1"), "warming up\nInvalid API key\n", "Claude said: Invalid API key"},
+		{fmt.Errorf("exit status 1"), " \n", "Claude stopped: exit status 1"},
+		{nil, "", "Claude stopped without an answer."},
+	}
+	for _, c := range cases {
+		if got := claudeFailure(c.err, c.stderr); got != c.want {
+			t.Errorf("claudeFailure(%v, %q) = %q, want %q", c.err, c.stderr, got, c.want)
+		}
 	}
 }
 

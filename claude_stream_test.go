@@ -96,3 +96,18 @@ func TestParseStreamIgnoresWhatItDoesNotUse(t *testing.T) {
 		}
 	}
 }
+
+func TestParseStreamSaysWhyAResultFailed(t *testing.T) {
+	cases := map[string]string{
+		// An API error ends with subtype success but is_error set.
+		`{"type":"result","subtype":"success","is_error":true,"result":"API Error: 500"}`:                "API Error: 500",
+		`{"type":"result","subtype":"error_during_execution","errors":["one","two"],"result":"ignored"}`: "one; two",
+		`{"type":"result","subtype":"error_max_turns"}`:                                                  "Claude stopped: error_max_turns",
+	}
+	for line, want := range cases {
+		got := streamParser{}.parse([]byte(line))
+		if !reflect.DeepEqual(got, []ClaudeEvent{{Kind: "error", Message: want}}) {
+			t.Errorf("%s: got %+v, want the error %q", line, got, want)
+		}
+	}
+}

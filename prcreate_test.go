@@ -19,6 +19,9 @@ func TestPRCreateArgsPutEachValueAfterItsFlag(t *testing.T) {
 	if got[7] != "Add limits" {
 		t.Errorf("title = %q", got[7])
 	}
+	if _, err := prCreateArgs(PRCreateRequest{Base: "main", Branch: "feat", Title: strings.Repeat("x", maxPRTitle)}); err != nil {
+		t.Errorf("a title of GitHub's largest size was rejected: %v", err)
+	}
 
 	for _, bad := range []PRCreateRequest{
 		{Base: "main", Branch: "feat", Title: ""},
@@ -27,6 +30,9 @@ func TestPRCreateArgsPutEachValueAfterItsFlag(t *testing.T) {
 		{Base: "-main", Branch: "feat", Title: "t"},
 		{Base: "main", Branch: "--repo=evil/x", Title: "t"},
 		{Base: "main", Branch: "a..b", Title: "t"},
+		{Base: "main", Branch: "feat/", Title: "t"},
+		{Base: "main", Branch: "feat.lock", Title: "t"},
+		{Base: "main", Branch: "feat", Title: strings.Repeat("x", maxPRTitle+1)},
 		{Base: "main", Branch: "main", Title: "t"},
 		{Base: "", Branch: "feat", Title: "t"},
 	} {

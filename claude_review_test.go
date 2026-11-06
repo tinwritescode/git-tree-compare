@@ -140,6 +140,12 @@ func TestPolishAndSummaryRunWithoutTools(t *testing.T) {
 	if _, err := polishTask("p-1", PolishRequest{Change: testChange(), Body: "  "}); err == nil {
 		t.Error("polished a blank draft")
 	}
+	if _, err := polishTask("p-1", PolishRequest{Change: testChange(), Body: strings.Repeat("d", maxDraft)}); err != nil {
+		t.Errorf("a draft of the largest size was rejected: %v", err)
+	}
+	if _, err := polishTask("p-1", PolishRequest{Change: testChange(), Body: strings.Repeat("d", maxDraft+1)}); err == nil {
+		t.Error("polished a draft over the largest size")
+	}
 	if _, err := summaryTask("s-1", SummaryRequest{Change: testChange(), Verdict: "MERGE"}); err == nil {
 		t.Error("took an unknown verdict")
 	}

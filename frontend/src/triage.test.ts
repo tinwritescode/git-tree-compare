@@ -42,6 +42,7 @@ describe('readingOrder', () => {
             file('src/app.ts'),
             file('src/types.ts'),
             file('db/migrations/002_add_limit.sql'),
+            file('db/migrations/003_backfill.go'),
             file('.github/workflows/ci.yml'),
             file('.gitignore'),
             file('models/user.go'),
@@ -49,6 +50,7 @@ describe('readingOrder', () => {
         ];
         expect(paths(readingOrder(files))).toEqual([
             'db/migrations/002_add_limit.sql',
+            'db/migrations/003_backfill.go',
             'prisma/schema.prisma',
             'models/user.go',
             'src/types.ts',

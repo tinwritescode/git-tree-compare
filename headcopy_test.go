@@ -38,6 +38,9 @@ func TestHeadCopyPathIsNamedAfterThePullRequestAndHead(t *testing.T) {
 	if other == got {
 		t.Fatal("two repositories share a copy")
 	}
+	if _, err := headCopyPath(headCopyRequest{Tmp: "/tmp", Repo: "/src/widget", Number: 1, Head: head, Path: "pkg/f.txt"}); err != nil {
+		t.Fatalf("pull request 1 was rejected: %v", err)
+	}
 }
 
 func TestHeadCopyPathRejectsPathsOutsideTheCopy(t *testing.T) {

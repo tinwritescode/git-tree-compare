@@ -53,6 +53,9 @@ func TestReviewRequestJSONWithoutDrafts(t *testing.T) {
 
 func TestReviewRequestJSONRejectsBadInput(t *testing.T) {
 	line := ReviewDraft{Kind: "line", Path: "a.go", Line: 1, Side: "RIGHT", Body: "x"}
+	if _, err := reviewRequestJSON(ReviewSubmission{Head: testHead, Event: "COMMENT", Drafts: []ReviewDraft{line}}); err != nil {
+		t.Fatalf("a comment on line 1 was rejected: %v", err)
+	}
 	cases := map[string]ReviewSubmission{
 		"short head":    {Head: "abc123", Event: "COMMENT", Drafts: []ReviewDraft{line}},
 		"unknown event": {Head: testHead, Event: "PENDING", Drafts: []ReviewDraft{line}},

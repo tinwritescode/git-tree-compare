@@ -22,6 +22,28 @@ describe('findings from Claude', () => {
         expect(parseFindings({value: null, paths: PATHS})).toBeNull();
     });
 
+    it('accepts every kind, and confidence from 0 to 1', () => {
+        const got = parseFindings({value: {findings: [
+            raw({kind: 'risk', confidence: 0}), raw({kind: 'test', confidence: 1}), raw({kind: 'nit', line: 1}),
+        ]}, paths: PATHS});
+        expect(got?.map(f => [f.kind, f.confidence, f.line])).toEqual([['risk', 0, 2], ['test', 1, 2], ['nit', 0.8, 1]]);
+    });
+
+    it('drops a finding with any part missing or out of range', () => {
+        const bad = [
+            {path: 5}, {line: '2'}, {line: 2.5}, {line: 0}, {confidence: '0.8'}, {confidence: -0.1}, {confidence: 1.1},
+            {title: 3}, {title: '  '}, {body: null},
+        ];
+        for (const over of bad) {
+            expect(parseFindings({value: {findings: [raw(over)]}, paths: PATHS}), JSON.stringify(over)).toEqual([]);
+        }
+    });
+
+    it('keys a finding the same way in every version, so dismissals saved earlier still apply', () => {
+        // FNV-1a of "a.go\x002\x00Off by one", as computed outside this code.
+        expect(findingKey({path: 'a.go', line: 2, title: 'Off by one'})).toBe('1e653144');
+    });
+
     it('keys a finding by file, line and title, so the same finding stays dismissed', () => {
         const key = findingKey({path: 'a.go', line: 2, title: 'Off by one'});
         expect(findingKey({path: 'a.go', line: 2, title: 'Off by one'})).toBe(key);
@@ -72,6 +94,7 @@ describe('moving between findings', () => {
     it('starts from a line between findings, and has nothing to go to with no findings', () => {
         expect(nextFinding({findings, order, from: {path: 'a.go', line: 10}, step: 1})?.title).toBe('a.go:30');
         expect(nextFinding({findings: [], order, from: null, step: 1})).toBeNull();
+        expect(nextFinding({findings, order, from: null, step: -1})?.title).toBe('b.go:9');
     });
 });
 

@@ -2,6 +2,8 @@ package main
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -86,6 +88,26 @@ func TestCapTextSaysWhatWasLeftOut(t *testing.T) {
 	}
 	got := capText(strings.Repeat("x", 30), 10)
 	if !strings.HasPrefix(got, strings.Repeat("x", 10)) || !strings.Contains(got, "20 more bytes") {
+		t.Fatalf("got %q", got)
+	}
+}
+
+func TestCapTextKeepsTextOfExactlyTheLimit(t *testing.T) {
+	if got := capText("ten bytes!", 10); got != "ten bytes!" {
+		t.Fatalf("got %q", got)
+	}
+}
+
+// Pull request number 1 is a pull request too: its title and body come from gh.
+func TestDescribeChangeReadsTheFirstPullRequestFromGitHub(t *testing.T) {
+	dir := t.TempDir()
+	script := "#!/bin/sh\necho '{\"title\":\"Cap requests\",\"body\":\"Per user.\"}'\n"
+	if err := os.WriteFile(filepath.Join(dir, "gh"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	got := describeChange(ChangeRef{Repo: t.TempDir(), Base: testHead, Head: testHead, PR: 1, Title: "fallback"})
+	if got != "Cap requests\n\nPer user." {
 		t.Fatalf("got %q", got)
 	}
 }

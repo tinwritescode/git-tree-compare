@@ -39,17 +39,25 @@ describe('draft store', () => {
             {kind: 'line', id: '3', path: 'a.go', line: 0, side: 'RIGHT', body: 'x'},
             {kind: 'line', id: '4', path: 'a.go', line: 2, side: 'NEW', body: 'x'},
             {kind: 'file', id: '5', path: 'a.go'},
-            {kind: 'hunk', id: '6', path: 'a.go', body: 'x'},
+            {kind: 'hunk', id: '6', path: 'a.go', line: 2, side: 'RIGHT', body: 'x'},
+            {kind: 'file', id: 7, path: 'a.go', body: 'x'},
+            {kind: 'file', id: '8', path: '', body: 'x'},
+            {kind: 'file', id: '9', path: 'a.go', body: ' '},
+            {kind: 'line', id: '10', path: 'a.go', line: '2', side: 'RIGHT', body: 'x'},
+            {kind: 'line', id: '11', path: 'a.go', line: 2.5, side: 'RIGHT', body: 'x'},
+            {kind: 'line', id: '12', path: 'a.go', line: 2, side: 'LEFT', body: 'x', head: HEAD},
+            line('13', 'a.go', 1),
             'junk',
             null,
         ];
-        expect(parseDrafts(saved)).toEqual([line('1'), file('2')]);
+        expect(parseDrafts(saved)).toEqual([line('1'), file('2'), {kind: 'line', id: '12', path: 'a.go', line: 2, side: 'LEFT', body: 'x', head: HEAD}, line('13', 'a.go', 1)]);
         expect(parseDrafts({not: 'a list'})).toEqual([]);
     });
 
     it('reads a draft saved before drafts kept their head as written at an unknown head', () => {
         const {head: _head, ...old} = line('1');
         expect(parseDrafts([old])).toEqual([{...line('1'), head: null}]);
+        expect(parseDrafts([{...line('2'), head: ''}, {...file('3'), head: 42}])).toEqual([{...line('2'), head: null}, {...file('3'), head: null}]);
     });
 
     it('sends line and file drafts in the shape the backend takes', () => {
@@ -144,6 +152,11 @@ describe('focusFor', () => {
         expect(focusFor(rows[2], 'right')).toEqual({side: 'RIGHT', line: 2});
         expect(focusFor(rows[3], 'left')).toEqual({side: 'RIGHT', line: 3});
     });
+
+    it('focuses the removed half when a split row has no added line', () => {
+        const rows = diffRows(parseDiff('@@ -1,3 +1,2 @@\n a\n-b\n-x\n+c\n'), true);
+        expect(focusFor(rows[3], 'right')).toEqual({side: 'LEFT', line: 3});
+    });
 });
 
 describe('verdictBlock', () => {
@@ -187,6 +200,11 @@ describe('typed text of an open editor', () => {
         expect(typedFor(typing, {composer: {...onLine, line: 4}, saved: ''})).toBe('');
         expect(typedFor(typing, {composer: {...onLine, side: 'LEFT'}, saved: ''})).toBe('');
         expect(typedFor(typing, {composer: {kind: 'file', path: 'a.go'}, saved: ''})).toBe('');
+    });
+
+    it('keeps an editor empty once its text was cleared, rather than bringing the saved draft back', () => {
+        const typing = withTyped({}, {composer: editing, body: ''});
+        expect(typedFor(typing, {composer: editing, saved: 'saved words'})).toBe('');
     });
 
     it('starts an edit from the saved draft until something is typed', () => {

@@ -24,6 +24,28 @@ describe('the word diff of a polished draft', () => {
         expect(text(parts, ['same', 'add'])).toBe(after);
     });
 
+    it('keeps the rest unchanged when words are added or removed at either end', () => {
+        expect(wordDiff('fix it', 'please fix it')).toEqual([{kind: 'add', text: 'please '}, {kind: 'same', text: 'fix it'}]);
+        expect(wordDiff('please fix it', 'fix it')).toEqual([{kind: 'del', text: 'please '}, {kind: 'same', text: 'fix it'}]);
+        expect(wordDiff('fix it now', 'fix it ')).toEqual([{kind: 'same', text: 'fix it '}, {kind: 'del', text: 'now'}]);
+        expect(wordDiff('a b c d', 'a x c d')).toEqual([
+            {kind: 'same', text: 'a '}, {kind: 'del', text: 'b '}, {kind: 'add', text: 'x '}, {kind: 'same', text: 'c d'},
+        ]);
+    });
+
+    it('keeps the longest run of words unchanged, not the first word that matches', () => {
+        expect(wordDiff('p q r ', 'r p q ')).toEqual([{kind: 'add', text: 'r '}, {kind: 'same', text: 'p q '}, {kind: 'del', text: 'r '}]);
+        expect(wordDiff('fix it ', 'it fix it ')).toEqual([{kind: 'add', text: 'it '}, {kind: 'same', text: 'fix it '}]);
+        expect(wordDiff('x x y x ', 'y x ')).toEqual([{kind: 'del', text: 'x x '}, {kind: 'same', text: 'y x '}]);
+        expect(wordDiff('a c b a ', 'b a ')).toEqual([{kind: 'del', text: 'a c '}, {kind: 'same', text: 'b a '}]);
+    });
+
+    it('diffs up to 2000 words a side by word, and shows longer text as replaced whole', () => {
+        const words = (n: number) => Array.from({length: n}, (_, i) => `w${i}`).join(' ');
+        expect(wordDiff(words(2000), words(2000))).toEqual([{kind: 'same', text: words(2000)}]);
+        expect(wordDiff(words(2001), words(2001))).toEqual([{kind: 'del', text: words(2001)}, {kind: 'add', text: words(2001)}]);
+    });
+
     it('shows the same text as unchanged, and a rewrite of empty text as all added', () => {
         expect(wordDiff('same words', 'same words')).toEqual([{kind: 'same', text: 'same words'}]);
         expect(wordDiff('', 'new')).toEqual([{kind: 'add', text: 'new'}]);

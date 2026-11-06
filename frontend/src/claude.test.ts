@@ -48,6 +48,13 @@ describe('parseBrief', () => {
         });
     });
 
+    it('keeps a risk on line 0, the whole file, and drops one on a line that cannot be', () => {
+        const risk = (line: unknown) => ({path: 'limit.go', line, level: 'low', why: `line ${String(line)}`});
+        const got = parseBrief({value: {summary: 's', risks: [risk(0), risk(-1), risk(2.5)], untested: [{path: 'limit.go', line: -3, what: 'x'}]}, paths});
+        expect(got?.risks.map(r => r.why)).toEqual(['line 0']);
+        expect(got?.untested).toEqual([]);
+    });
+
     it('is null without a summary or when it is not an object', () => {
         expect(parseBrief({value: {risks: []}, paths})).toBeNull();
         expect(parseBrief({value: 'brief', paths})).toBeNull();
