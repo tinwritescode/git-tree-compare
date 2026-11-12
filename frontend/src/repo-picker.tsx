@@ -1,8 +1,11 @@
-import {type KeyboardEvent, useEffect, useRef, useState} from 'react';
+import {Fragment, type KeyboardEvent, useEffect, useMemo, useRef, useState} from 'react';
 import {HomeDir, ListDir} from '../wailsjs/go/main/App';
 import type {main} from '../wailsjs/go/models';
-import {basename} from './util';
+import {OwlSearch} from './mascots';
+import {crumbs, pickerRows, type PickerRow, splitQuery} from './picker';
+import {basename, folderOf} from './util';
 import {Button} from './ui/button';
+import {Kbd} from './ui/kbd';
 
 export interface RepoPickerProps {
     start: string; // folder to open first, usually the current repo's parent
@@ -12,44 +15,78 @@ export interface RepoPickerProps {
     onClose: () => void;
 }
 
-// RepoPicker browses folders inside the app, so opening a repo needs no native dialog.
+// Marked draws a name with the letters the filter matched picked out.
+function Marked({text, marks}: {text: string; marks: number[]}) {
+    if (!marks.length) return <>{text}</>;
+    const hit = new Set(marks);
+    return <>{text.split('').map((ch, i) => (hit.has(i) ? <mark key={i}>{ch}</mark> : ch))}</>;
+}
+
+// RepoPicker finds a repository from one box: words filter the open folder and the recent
+// repositories, a path walks the disk. It runs inside the app, so opening needs no native dialog.
 export function RepoPicker({start, recent, openError, onOpen, onClose}: RepoPickerProps) {
     const [listing, setListing] = useState<main.DirListing | null>(null);
+    const [home, setHome] = useState('');
     const [typed, setTyped] = useState('');
-    const [error, setError] = useState('');
+    const [failure, setFailure] = useState(''); // why the folder asked for last could not be listed
     const [active, setActive] = useState(0);
     const activeRow = useRef<HTMLLIElement>(null);
+    const wanted = useRef(''); // the folder asked for last; a slower answer for another one is dropped
 
-    async function go(path: string) {
+    async function load(path: string) {
+        wanted.current = path;
         try {
             const next = await ListDir(path);
+            if (wanted.current !== path) return;
             setListing(next);
-            setTyped(next.path);
-            setActive(0);
-            setError('');
+            setFailure('');
         } catch (e) {
-            setError(String(e));
+            if (wanted.current === path) setFailure(String(e));
         }
+        setActive(0);
+    }
+
+    // enter opens a folder to browse and clears the box, so the next letters filter that folder.
+    function enter(path: string) {
+        setTyped('');
+        load(path);
     }
 
     useEffect(() => {
         HomeDir()
             .catch(() => '')
-            .then(home => go(start || home || '/'));
+            .then(dir => {
+                setHome(dir);
+                load(start || dir || '/');
+            });
     }, []);
+
+    const {dir, filter} = splitQuery({typed, home});
+
+    // A typed path lists its folder as soon as the folder part changes.
+    useEffect(() => {
+        if (dir !== null) load(dir);
+    }, [dir]);
 
     useEffect(() => {
         activeRow.current?.scrollIntoView({block: 'nearest'});
     }, [active]);
 
-    const rows = listing?.entries ?? [];
+    // A folder that failed to list hides the rows only while its path is still in the box.
+    const broken = failure !== '' && (dir !== null || !listing);
+    const rows = useMemo(
+        () => (broken ? [] : pickerRows({filter, here: listing, entries: listing?.entries ?? [], recent: dir === null ? recent : []})),
+        [broken, filter, listing, dir, recent],
+    );
+    const here = listing ? basename(listing.path) || '/' : '';
+    const trail = listing ? crumbs({path: listing.path, home}) : [];
+
+    function pick(row: PickerRow) {
+        if (row.isRepo) onOpen(row.path);
+        else enter(row.path);
+    }
 
     function onKey(e: KeyboardEvent) {
-        if (e.key === 'Escape') {
-            e.preventDefault();
-            onClose();
-            return;
-        }
         if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
             e.preventDefault();
             if (!rows.length) return;
@@ -58,92 +95,106 @@ export function RepoPicker({start, recent, openError, onOpen, onClose}: RepoPick
         }
         if (e.key === 'Enter') {
             e.preventDefault();
-            const target = e.target as HTMLElement;
-            const path = typed.trim();
-            // A typed path that differs from the open folder goes there first.
-            if (target.tagName === 'INPUT' && path && path !== listing?.path) {
-                go(path);
-                return;
-            }
             const row = rows[active];
-            if (!row) return;
-            // A repository opens; any other folder is entered.
-            if (row.isRepo) onOpen(row.path);
-            else go(row.path);
+            if (row) pick(row);
             return;
         }
-        if (e.key === 'Backspace' && (e.target as HTMLElement).tagName !== 'INPUT' && listing?.parent) {
+        if (e.key === 'Backspace' && typed === '' && listing?.parent) {
             e.preventDefault();
-            go(listing.parent);
+            enter(listing.parent);
+        }
+    }
+
+    function title(kind: PickerRow['kind']): string {
+        switch (kind) {
+            case 'here':
+                return 'This folder';
+            case 'recent':
+                return 'Recent';
+            case 'folder':
+                return `In ${here}`;
         }
     }
 
     return (
         <div className="overlay" onClick={onClose}>
-            <div className="picker" role="dialog" aria-label="Open repository" onClick={e => e.stopPropagation()} onKeyDown={onKey}>
+            <div
+                className="picker"
+                role="dialog"
+                aria-label="Open repository"
+                onClick={e => e.stopPropagation()}
+                onKeyDown={e => e.key === 'Escape' && onClose()}
+            >
                 <div className="picker-head">
-                    <span>Open repository</span>
-                    <Button size="icon"  onClick={onClose} aria-label="Close">×</Button>
+                    <h2>Open repository</h2>
+                    <Button variant="ghost" size="icon" onClick={onClose} aria-label="Close">×</Button>
                 </div>
 
                 <input
                     className="picker-input"
+                    role="combobox"
+                    aria-label="Search folders, or type a path"
+                    aria-expanded="true"
+                    aria-controls="picker-list"
+                    aria-activedescendant={rows[active] ? `picker-row-${active}` : undefined}
                     autoFocus
                     spellCheck={false}
-                    placeholder="Type a folder path, then Enter"
+                    placeholder="Search folders, or type a path"
                     value={typed}
-                    onChange={e => setTyped(e.target.value)}
+                    onChange={e => {
+                        setTyped(e.target.value);
+                        setActive(0);
+                    }}
+                    onKeyDown={onKey}
                 />
 
-                {recent.length > 0 && (
-                    <div className="picker-section">
-                        <div className="picker-label">Recent</div>
-                        <ul>
-                            {recent.map(path => (
-                                <li key={path}>
-                                    <button className="picker-recent" onClick={() => onOpen(path)} title={path}>
-                                        <span className="name">{basename(path)}</span>
-                                        <span className="picker-sub">{path}</span>
-                                    </button>
-                                </li>
-                            ))}
-                        </ul>
-                    </div>
-                )}
-
-                <div className="picker-toolbar">
-                    <Button onClick={() => listing?.parent && go(listing.parent)} disabled={!listing?.parent}>
-                        ↑ Up
-                    </Button>
-                    <span className="picker-here" title={listing?.path}>{listing?.path ?? ''}</span>
-                    <Button onClick={() => listing && onOpen(listing.path)} disabled={!listing?.isRepo}>
-                        {listing?.isRepo ? 'Open this repo' : 'Not a repo'}
-                    </Button>
-                </div>
-
-                {(error || openError) && <div className="error" role="alert">{error || openError}</div>}
-
-                <ul className="picker-list" role="listbox">
-                    {rows.map((row, i) => (
-                        <li
-                            key={row.path}
-                            ref={i === active ? activeRow : undefined}
-                            role="option"
-                            aria-selected={i === active}
-                            className={i === active ? 'picker-item active' : 'picker-item'}
-                            onMouseEnter={() => setActive(i)}
-                            onDoubleClick={() => (row.isRepo ? onOpen(row.path) : go(row.path))}
-                            onClick={() => setActive(i)}
-                        >
-                            <span className="picker-folder">{row.isRepo ? '⎇' : '▸'}</span>
-                            <span className="name">{row.name}</span>
-                            {row.isRepo && <span className="picker-badge">git</span>}
-                        </li>
+                <nav className="picker-crumbs" aria-label="Open folder">
+                    {trail.map((crumb, i) => (
+                        <Fragment key={crumb.path}>
+                            {i > 0 && trail[i - 1].name !== '/' && <span aria-hidden="true">/</span>}
+                            <button type="button" aria-current={i === trail.length - 1 ? 'location' : undefined} onClick={() => enter(crumb.path)} title={crumb.path}>
+                                {crumb.name}
+                            </button>
+                        </Fragment>
                     ))}
-                    {listing && rows.length === 0 && <li className="none">No folders here</li>}
+                </nav>
+
+                {(broken || openError) && <div className="error" role="alert">{broken ? failure : openError}</div>}
+
+                <ul className="picker-list" id="picker-list" role="listbox" aria-label="Folders">
+                    {rows.map((row, i) => (
+                        <Fragment key={`${row.kind} ${row.path}`}>
+                            {!filter && row.kind !== rows[i - 1]?.kind && <li className="picker-label" role="presentation">{title(row.kind)}</li>}
+                            <li
+                                id={`picker-row-${i}`}
+                                ref={i === active ? activeRow : undefined}
+                                role="option"
+                                aria-selected={i === active}
+                                className={`picker-item${i === active ? ' active' : ''}${row.isRepo ? ' is-repo' : ''}`}
+                                onMouseMove={() => i !== active && setActive(i)}
+                                onClick={() => pick(row)}
+                                title={row.path}
+                            >
+                                <span className="picker-folder" aria-hidden="true">{row.isRepo ? '⎇' : '▸'}</span>
+                                <span className="name"><Marked text={row.name} marks={row.marks}/></span>
+                                {row.kind === 'recent' && <span className="picker-sub">{home && row.path.startsWith(`${home}/`) ? `~${folderOf(row.path).slice(home.length)}` : folderOf(row.path)}</span>}
+                                {i === active && <span className="picker-do"><Kbd>↵</Kbd>{row.isRepo ? 'Open' : 'Look inside'}</span>}
+                            </li>
+                        </Fragment>
+                    ))}
+                    {listing && !broken && rows.length === 0 && (
+                        filter
+                            ? <li className="none mascot-state"><OwlSearch/>Nothing in {here} matches “{filter}”.</li>
+                            : <li className="none">No folders in {here}.</li>
+                    )}
                 </ul>
 
-                <div className="picker-hint">↑↓ move · Enter open repo or enter folder · Backspace up · Esc close</div>
+                <div className="picker-hint">
+                    <span><Kbd>↑</Kbd><Kbd>↓</Kbd>move</span>
+                    <span><Kbd>/</Kbd><Kbd>~</Kbd>type a path</span>
+                    <span><Kbd>⌫</Kbd>up a folder</span>
+                    <span><Kbd>esc</Kbd>close</span>
+                </div>
             </div>
         </div>
     );

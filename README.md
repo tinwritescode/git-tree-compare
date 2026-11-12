@@ -42,7 +42,7 @@ The app checks for a newer release when it starts. When one exists, the banner o
 
 ### Open a repository
 
-- Open the app and choose **Open repository…**. Browse folders, or pick a recent one.
+- Open the app and choose **Open repository…**. Type a few words to find a folder (`metrics mai` finds `air-metrics-api.feat-mai-pull`), type a path that starts with `/` or `~` to go anywhere, or pick a recent one.
 - Or from a terminal, pass the path:
 
 ```bash

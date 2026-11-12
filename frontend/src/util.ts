@@ -1,25 +1,31 @@
 // Small helpers: fuzzy matching, shell quoting, and the Markdown summary.
 import type {Draft} from './drafts';
 
-// fuzzyScore returns -1 when query is not a subsequence of text. Lower is better.
-export function fuzzyScore(query: string, text: string): number {
+// fuzzyMatch finds query in text as a subsequence: where each letter landed, and a score where lower is better.
+// It returns null when query is not there.
+export function fuzzyMatch(query: string, text: string): {score: number; marks: number[]} | null {
     const q = query.toLowerCase();
     const t = text.toLowerCase();
-    if (!q) return 0;
+    if (!q) return {score: 0, marks: []};
 
     let score = 0;
-    let from = 0;
     let last = -2;
+    const marks: number[] = [];
     for (const ch of q) {
-        const at = t.indexOf(ch, from);
-        if (at === -1) return -1;
+        const at = t.indexOf(ch, Math.max(last + 1, 0));
+        if (at === -1) return null;
         // Consecutive matches and matches after a separator cost less.
         score += at === last + 1 ? 0 : at;
         if (at === 0 || '/._-'.includes(t[at - 1])) score -= 1;
         last = at;
-        from = at + 1;
+        marks.push(at);
     }
-    return score + t.length * 0.01;
+    return {score: score + t.length * 0.01, marks};
+}
+
+// fuzzyScore returns -1 when query is not a subsequence of text. Lower is better.
+export function fuzzyScore(query: string, text: string): number {
+    return fuzzyMatch(query, text)?.score ?? -1;
 }
 
 // shellQuote wraps a value so it is one argument to sh.
