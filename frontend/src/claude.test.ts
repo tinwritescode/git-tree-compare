@@ -1,7 +1,7 @@
 import {describe, expect, it} from 'vitest';
 import {
     briefChip, type BriefRun, briefRunStep, briefState, modelChoices, modelFor, parseBrief, parseClaudeEvent, parseClaudeModels, parsePRDescription, parseRepoList,
-    riskMarks,
+    fileBrief, riskMarks,
 } from './claude';
 
 const paths = new Set(['limit.go', 'limit_test.go', 'server.go']);
@@ -113,6 +113,29 @@ describe('riskMarks', () => {
             ],
         });
         expect(marks).toEqual({'a.go': {level: 'high', why: 'Small.\nBig.'}, 'b.go': {level: 'med', why: 'Middle.'}});
+    });
+});
+
+describe('fileBrief', () => {
+    const brief = {
+        summary: 's', chapters: [],
+        risks: [
+            {path: 'a.go', line: 9, level: 'low' as const, why: 'Small.'},
+            {path: 'b.go', line: 0, level: 'med' as const, why: 'Middle.'},
+            {path: 'a.go', line: 1, level: 'high' as const, why: 'Big.'},
+        ],
+        untested: [{path: 'a.go', line: 4, what: 'The retry.'}, {path: 'c.go', line: 2, what: 'The parser.'}],
+    };
+
+    it('keeps what the brief says about one file, the worst risk first', () => {
+        expect(fileBrief({brief, path: 'a.go'})).toEqual({
+            risks: [{path: 'a.go', line: 1, level: 'high', why: 'Big.'}, {path: 'a.go', line: 9, level: 'low', why: 'Small.'}],
+            untested: [{path: 'a.go', line: 4, what: 'The retry.'}],
+        });
+    });
+
+    it('is empty for a file the brief does not mention', () => {
+        expect(fileBrief({brief, path: 'z.go'})).toEqual({risks: [], untested: []});
     });
 });
 

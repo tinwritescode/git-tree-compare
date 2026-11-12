@@ -1,6 +1,8 @@
 // The "Claude · brief" card above the diff: what the change does, where to slow down, and what no
 // test covers. Paths open their file.
-import {type BriefState, type RiskLevel} from './claude';
+import {type Brief, type BriefState, fileBrief, type RiskLevel} from './claude';
+import {OwlPerch} from './mascots';
+import {Kbd} from './ui/kbd';
 
 const LEVEL_LABEL: Record<RiskLevel, string> = {low: 'low', med: 'medium', high: 'high'};
 
@@ -24,6 +26,38 @@ export function BriefCard({state, since, open, onToggle, onOpenFile}: {
             {open && since && <SinceBody since={since}/>}
             {open && <BriefBody state={state} onOpenFile={onOpenFile}/>}
         </section>
+    );
+}
+
+// FileBrief sits beside the diff: what the brief says about the open file, so the warning is in
+// view while the code is. The whole brief stays one key away.
+export function FileBrief({brief, path, onShowBrief}: {brief: Brief; path: string; onShowBrief: () => void}) {
+    const {risks, untested} = fileBrief({brief, path});
+    const line = (n: number) => (n > 0 ? `Line ${n}: ` : '');
+    return (
+        <aside className="file-brief" aria-label="Claude on this file">
+            <OwlPerch/>
+            <div className="file-brief-card">
+                {risks.length + untested.length === 0 && <p>Claude flagged nothing in this file.</p>}
+                {risks.length > 0 && (
+                    <>
+                        <h2>Slow down here</h2>
+                        <ul className="brief-list">
+                            {risks.map((r, i) => (
+                                <li key={i}><span className={`risk-dot risk-${r.level}`} title={`${LEVEL_LABEL[r.level]} risk`}>●</span>{line(r.line)}{r.why}</li>
+                            ))}
+                        </ul>
+                    </>
+                )}
+                {untested.length > 0 && (
+                    <>
+                        <h2>No test covers</h2>
+                        <ul className="brief-list">{untested.map((u, i) => <li key={i}>{line(u.line)}{u.what}</li>)}</ul>
+                    </>
+                )}
+                <button type="button" className="file-brief-more" onClick={onShowBrief}><Kbd>⇧B</Kbd> The whole brief</button>
+            </div>
+        </aside>
     );
 }
 

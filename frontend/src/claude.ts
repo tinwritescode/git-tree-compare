@@ -151,6 +151,14 @@ export function riskMarks(brief: Brief): Record<string, RiskMark> {
 }
 
 // Model per kind of task, chosen in ⌘K. The default comes from the backend.
+// fileBrief is what the brief says about one file: its risks, the worst first, and what no test covers.
+export function fileBrief({brief, path}: {brief: Brief; path: string}): Pick<Brief, 'risks' | 'untested'> {
+    return {
+        risks: brief.risks.filter(r => r.path === path).sort((a, b) => RISK_RANK[b.level] - RISK_RANK[a.level]),
+        untested: brief.untested.filter(u => u.path === path),
+    };
+}
+
 export const CLAUDE_TASKS = ['brief', 'findings', 'rereview', 'explain', 'ask', 'polish', 'summary', 'prdesc'] as const;
 export type ClaudeTaskKind = (typeof CLAUDE_TASKS)[number];
 export const TASK_LABEL: Record<ClaudeTaskKind, string> = {

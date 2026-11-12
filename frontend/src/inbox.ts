@@ -63,3 +63,8 @@ export function inboxGroups({prs, local, query}: {prs: main.PRInfo[]; local: Loc
     const found = q ? rows.filter(r => rowText(r).toLowerCase().includes(q)) : rows;
     return GROUPS.map(g => ({...g, rows: found.filter(r => groupOf(r) === g.id)})).filter(g => g.rows.length);
 }
+
+// nextUp is the row the inbox leads with: the first pull request waiting for this reviewer.
+export function nextUp(groups: InboxGroup[]): InboxRow | null {
+    return groups.find(g => g.id === 'requested')?.rows[0] ?? null;
+}

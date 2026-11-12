@@ -43,7 +43,8 @@ import {
     TakePendingRepo,
 } from '../wailsjs/go/main/App';
 import {BrowserOpenURL, EventsOn} from '../wailsjs/runtime/runtime';
-import {BriefCard, type SinceNote} from './brief';
+import {BriefCard, FileBrief, type SinceNote} from './brief';
+import {ReviewDock} from './dock';
 import {
     briefChip, type BriefRun, briefRunStep, briefState, CLAUDE_TASKS, type ClaudeEvent, type ClaudeModels, type ClaudeTaskKind, modelChoices, modelFor,
     parseClaudeEvent, parseClaudeModels, parsePRDescription, parseRepoList, type PRDescription, type RiskMark, riskMarks, TASK_LABEL,
@@ -1831,7 +1832,7 @@ function App() {
             {reviewing && (
                 <>
                     <header className="review-bar">
-                        <Button onClick={closeReview} title="All pull requests (p)">All PRs</Button>
+                        <Button onClick={closeReview} title="All pull requests (p)">All pull requests <Kbd>p</Kbd></Button>
                         <div className="review-title">
                             {pr && (
                                 <>
@@ -1887,9 +1888,6 @@ function App() {
                                 Comments{unresolvedCount > 0 ? ` ${unresolvedCount}` : ''}
                             </Button>
                         )}
-                        <Button onClick={() => setFinishOpen(true)} title={pr ? 'Submit your review with a verdict (⌘↵)' : 'Copy the summary or export a patch (⌘↵)'}>
-                            Finish review{drafts.length ? ` · ${drafts.length}` : ''} <Kbd>⌘↵</Kbd>
-                        </Button>
                         <Button onClick={() => setPaletteOpen(true)} title="All commands">Commands <Kbd>⌘K</Kbd></Button>
                     </header>
 
@@ -1905,7 +1903,7 @@ function App() {
                         }}
                     />
 
-                    <div className="panes">
+                    <div className={split ? 'panes split' : 'panes'}>
                         <aside className="tree">
                             {changes.length > 0 && (
                                 <div className="tree-head">
@@ -2020,13 +2018,10 @@ function App() {
                                     file={selected}
                                     text={diff}
                                     split={split}
-                                    reviewed={!!reviewed[selected.path]}
-                                    onToggleReviewed={() => toggleFiles([selected.path])}
                                     note={notes[selected.path] ?? ''}
                                     noteOpen={noteOpen}
                                     onToggleNote={() => setNoteOpen(v => !v)}
                                     onNote={text => updateNote(selected.path, text)}
-                                    onToggleSplit={() => setSplit(s => !s)}
                                     fullFile={fullFile || tempFull === selected.path}
                                     onToggleFullFile={() => (tempFull === selected.path ? setTempFull(null) : setFullFile(v => !v))}
                                     jump={jump?.path === selected.path && diffPath === selected.path ? jump : null}
@@ -2047,7 +2042,6 @@ function App() {
                                     composer={composer}
                                     focus={focusLine?.path === selected.path ? focusLine : null}
                                     onFocusLine={focusAt}
-                                    onComment={startComment}
                                     onAddNoteToReview={() => addNoteToReview(selected.path)}
                                     draftControls={draftControls}
                                     threadControls={pr ? threadControls : null}
@@ -2069,7 +2063,24 @@ function App() {
                                 onClose={closeClaudePanel}
                             />
                         )}
+                        {shownBrief && selected && !claudePanel && (
+                            <FileBrief brief={shownBrief} path={selected.path} onShowBrief={() => setBriefOpen(true)}/>
+                        )}
                     </div>
+                    <ReviewDock
+                        file={selected ? {reviewed: !!reviewed[selected.path]} : null}
+                        split={split}
+                        drafts={drafts.length}
+                        claude={aiOn}
+                        finishTitle={pr ? 'Submit your review with a verdict (⌘↵)' : 'Copy the summary or export a patch (⌘↵)'}
+                        onToggleReviewed={() => selected && toggleFiles([selected.path])}
+                        onComment={startComment}
+                        onExplain={explainHunk}
+                        onAsk={openAsk}
+                        onHunk={moveHunk}
+                        onToggleSplit={() => setSplit(s => !s)}
+                        onFinish={() => setFinishOpen(true)}
+                    />
                 </>
             )}
 
@@ -2255,13 +2266,10 @@ function DiffPanel(props: {
     file: FileChange;
     text: string;
     split: boolean;
-    reviewed: boolean;
-    onToggleReviewed: () => void;
     note: string;
     noteOpen: boolean;
     onToggleNote: () => void;
     onNote: (text: string) => void;
-    onToggleSplit: () => void;
     fullFile: boolean;
     onToggleFullFile: () => void;
     editors: main.Editor[];
@@ -2282,7 +2290,6 @@ function DiffPanel(props: {
     composer: Composer | null;
     focus: LineFocus | null;
     onFocusLine: (target: {side: Side; line: number}) => void;
-    onComment: () => void;
     onAddNoteToReview: () => void;
     draftControls: DraftControls;
     threadControls: ThreadControls | null;
@@ -2302,12 +2309,13 @@ function DiffPanel(props: {
             <div className="diff-header">
                 <span className={`chip status-${file.status}`} title={STATUS_LABEL[file.status]}>{STATUS_LABEL[file.status]}</span>
                 <div className="diff-title">
-                    <div className="diff-path">{file.path}</div>
+                    <div className="diff-path" title={file.path}>
+                        <span className="diff-name">{basename(file.path)}</span>
+                        <span className="diff-dir">{folderOf(file.path)}</span>
+                    </div>
                     {file.oldPath && <div className="diff-old">renamed from {file.oldPath}</div>}
                 </div>
-                <Button className="review-toggle" aria-pressed={props.reviewed} onClick={props.onToggleReviewed} title="Mark reviewed here and on GitHub (x)">
-                    {props.reviewed ? 'Reviewed' : 'Mark reviewed'} <Kbd>x</Kbd>
-                </Button>
+                <span className="counts"><span className="added">+{file.added}</span> <span className="deleted">−{file.deleted}</span></span>
                 {props.since && (
                     <div className="since-toggle" role="group" aria-label="Diff range">
                         <Button aria-pressed={props.since === 'whole'} onClick={props.since === 'whole' ? undefined : props.onToggleSince} title="Every change in the pull request (s)">
@@ -2318,11 +2326,7 @@ function DiffPanel(props: {
                         </Button>
                     </div>
                 )}
-                <Button onClick={props.onComment} title="Comment on the line you clicked, or on the file (c)">Comment</Button>
                 <Button onClick={props.onToggleNote} title="Note (n)">{noteOpen ? 'Hide note' : 'Note'}</Button>
-                <Button onClick={props.onToggleSplit} title="Toggle split view (v)">
-                    {split ? 'Unified' : 'Split'}
-                </Button>
                 <Button
                     aria-pressed={props.fullFile}
                     onClick={props.onToggleFullFile}

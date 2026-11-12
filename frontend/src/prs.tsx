@@ -1,10 +1,10 @@
 import {useEffect, useMemo, useRef, useState} from 'react';
 import type {main} from '../wailsjs/go/models';
-import {inboxGroups, type InboxRow, type LocalWork, rowKey} from './inbox';
+import {inboxGroups, type InboxRow, type LocalWork, nextUp, rowKey} from './inbox';
 import {basename, inkShare, tickWeight, timeAgo} from './util';
 import {Button} from './ui/button';
 import {Kbd} from './ui/kbd';
-import {OwlTray, Snail} from './mascots';
+import {OwlPerch, OwlTray, Snail} from './mascots';
 
 export type PR = main.PRInfo;
 
@@ -30,6 +30,19 @@ export function PRList({repo, prs, local, loading, error, reviewedCount, active,
     const groups = useMemo(() => inboxGroups({prs, local, query}), [prs, local, query]);
     const ordered = useMemo(() => groups.flatMap(g => g.rows), [groups]);
     const current = ordered[Math.min(index, ordered.length - 1)];
+    // The inbox leads with the first pull request waiting for you; a filter shows plain matches.
+    const lead = query.trim() ? null : nextUp(groups);
+    const waiting = groups.find(g => g.id === 'requested')?.rows.length ?? 0;
+    const rowView = (row: InboxRow, isLead = false) => (
+        <InboxRowView
+            row={row}
+            lead={isLead}
+            selected={row === current}
+            reviewedCount={reviewedCount}
+            onOpen={() => onOpen(row)}
+            onHover={() => setIndex(ordered.indexOf(row))}
+        />
+    );
 
     useEffect(() => {
         if (!active) return;
@@ -100,31 +113,32 @@ export function PRList({repo, prs, local, loading, error, reviewedCount, active,
             )}
 
             <div className="prs-scroll">
-                {groups.map(group => (
-                    <section className="prs-group" key={group.id}>
-                        <h2>{group.title}</h2>
-                        <ul>
-                            {group.rows.map(row => (
-                                <li key={rowKey(row)}>
-                                    <InboxRowView
-                                        row={row}
-                                        selected={row === current}
-                                        reviewedCount={reviewedCount}
-                                        onOpen={() => onOpen(row)}
-                                        onHover={() => setIndex(ordered.indexOf(row))}
-                                    />
-                                </li>
-                            ))}
-                        </ul>
+                {lead && (
+                    <section className="prs-lead">
+                        <h1>
+                            <OwlPerch/>
+                            <span>{waiting === 1 ? '1 pull request is waiting for you.' : `${waiting} pull requests are waiting for you. Start with this one.`}</span>
+                        </h1>
+                        {rowView(lead, true)}
                     </section>
-                ))}
+                )}
+                {groups.map(group => {
+                    const rows = group.rows.filter(row => row !== lead);
+                    return rows.length > 0 && (
+                        <section className="prs-group" key={group.id}>
+                            <h2>{lead && group.id === 'requested' ? 'Also waiting' : group.title}</h2>
+                            <ul>{rows.map(row => <li key={rowKey(row)}>{rowView(row)}</li>)}</ul>
+                        </section>
+                    );
+                })}
             </div>
         </main>
     );
 }
 
-function InboxRowView({row, selected, reviewedCount, onOpen, onHover}: {
+function InboxRowView({row, lead, selected, reviewedCount, onOpen, onHover}: {
     row: InboxRow;
+    lead: boolean; // the pull request the inbox leads with, drawn as a card
     selected: boolean;
     reviewedCount: (pr: PR) => number;
     onOpen: () => void;
@@ -132,7 +146,7 @@ function InboxRowView({row, selected, reviewedCount, onOpen, onHover}: {
 }) {
     switch (row.kind) {
         case 'pr':
-            return <PRRow pr={row.pr} selected={selected} reviewed={reviewedCount(row.pr)} onOpen={onOpen} onHover={onHover}/>;
+            return <PRRow pr={row.pr} lead={lead} selected={selected} reviewed={reviewedCount(row.pr)} onOpen={onOpen} onHover={onHover}/>;
         case 'branch':
             return (
                 <LocalRow
@@ -182,15 +196,16 @@ function LocalRow({mark, name, sub, selected, onOpen, onHover}: {
     );
 }
 
-function PRRow({pr, selected, reviewed, onOpen, onHover}: {
+function PRRow({pr, lead, selected, reviewed, onOpen, onHover}: {
     pr: PR;
+    lead: boolean;
     selected: boolean;
     reviewed: number;
     onOpen: () => void;
     onHover: () => void;
 }) {
     return (
-        <button className={`pr-row${selected ? ' selected' : ''}`} onClick={onOpen} onMouseMove={onHover}>
+        <button className={`pr-row${lead ? ' lead' : ''}${selected ? ' selected' : ''}`} onClick={onOpen} onMouseMove={onHover}>
             <span className="pr-num">{pr.number}</span>
             <span className="pr-main">
                 <span className="pr-name">
@@ -204,6 +219,7 @@ function PRRow({pr, selected, reviewed, onOpen, onHover}: {
             </span>
             <SizeBars added={pr.additions} deleted={pr.deletions}/>
             <ReviewMeter done={reviewed} total={pr.changedFiles}/>
+            {lead && <span className="pr-go">{reviewed > 0 ? 'Continue review' : 'Start review'} <Kbd>↵</Kbd></span>}
         </button>
     );
 }

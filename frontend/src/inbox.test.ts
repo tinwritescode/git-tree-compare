@@ -1,6 +1,6 @@
 import {describe, expect, it} from 'vitest';
 import type {main} from '../wailsjs/go/models';
-import {inboxGroups, type InboxRow, rowKey} from './inbox';
+import {inboxGroups, type InboxRow, nextUp, rowKey} from './inbox';
 
 const pr = (number: number, group: string, title = `PR ${number}`): main.PRInfo => ({
     id: `id${number}`, number, title, url: '', author: 'ana', headRefName: `b${number}`, headRefOid: '', baseRefName: 'main',
@@ -41,5 +41,17 @@ describe('inboxGroups', () => {
 
     it('has no local group before local work is read', () => {
         expect(keys(inboxGroups({prs: [pr(1, 'mine')], local: null, query: ''}))).toEqual([['mine', ['pr:1']]]);
+    });
+});
+
+describe('nextUp', () => {
+    it('is the first pull request waiting for your review', () => {
+        const groups = inboxGroups({prs: [pr(3, 'other'), pr(2, 'requested'), pr(1, 'requested')], local, query: ''});
+        expect(nextUp(groups)).toEqual({kind: 'pr', pr: pr(2, 'requested')});
+    });
+
+    it('is nothing when no pull request waits for you', () => {
+        expect(nextUp(inboxGroups({prs: [pr(3, 'other'), pr(2, 'mine')], local, query: ''}))).toBeNull();
+        expect(nextUp([])).toBeNull();
     });
 });

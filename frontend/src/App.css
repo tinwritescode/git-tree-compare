@@ -401,16 +401,20 @@ button:disabled {
     color: var(--error-text);
 }
 
+/* The review is three columns on the page: the files, the open file's card, and Claude's note on it. */
 .panes {
     flex: 1;
     display: flex;
+    justify-content: center;
+    gap: 20px;
     min-height: 0;
+    padding: 0 20px;
 }
 
 .tree {
-    width: 320px;
+    flex: none;
+    width: 260px;
     overflow: auto;
-    border-right: 1px solid var(--border);
     /* Shift-click selects files, so the browser's text selection must not paint over the rows. */
     user-select: none;
 }
@@ -426,6 +430,7 @@ button:disabled {
     align-items: center;
     gap: 8px;
     padding: 6px 10px;
+    border-radius: 9px;
     cursor: pointer;
     white-space: nowrap;
 }
@@ -434,10 +439,10 @@ button:disabled {
     background: var(--bg-hover);
 }
 
-/* The open file is marked by a cool rule on its edge, not by a fill alone. */
+/* The open file is marked by an ink ring, not by a fill alone. */
 .row.active {
     background: var(--bg-active);
-    box-shadow: inset 2px 0 0 var(--cool);
+    box-shadow: inset 0 0 0 1.5px var(--text);
 }
 
 .row.picked {
@@ -532,7 +537,7 @@ button:disabled {
     padding: 6px 8px;
     font-size: 13px;
     background: var(--bg-alt);
-    border-bottom: 1px solid var(--border);
+    border-radius: 9px;
 }
 
 .tree-select span {
@@ -557,12 +562,21 @@ button:disabled {
     padding: 4px 8px;
 }
 
+/* The open file is a card that scrolls inside itself. Unified, it stops at a readable width; split takes the room. */
 .diff {
     flex: 1;
     min-width: 0;
+    max-width: 1040px;
     overflow: auto;
     display: flex;
     flex-direction: column;
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--bg-alt);
+}
+
+.panes.split .diff {
+    max-width: none;
 }
 
 .diff-header {
@@ -587,6 +601,19 @@ button:disabled {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+
+/* The file's name is the title of the card; its folder follows, quieter. */
+.diff-name {
+    font-family: var(--font-title);
+    font-size: 22px;
+    line-height: 1.2;
+}
+
+.diff-dir {
+    margin-left: 10px;
+    color: var(--text-dim);
+    font-size: 13px;
 }
 
 .diff-old {
@@ -1446,8 +1473,10 @@ button:disabled {
     box-sizing: border-box;
 }
 
-.prs-head {
-    border-bottom: 1px solid var(--border);
+/* The bar's controls are pills, so they read as controls on the bare page. */
+.prs-head .button,
+.review-bar .button {
+    border-radius: 999px;
 }
 
 .prs-head button,
@@ -1457,14 +1486,17 @@ button:disabled {
 }
 
 .prs-repo {
-    border: 0;
-    padding: 0;
-    background: none;
+    padding: 4px 14px;
+    border: 1px solid var(--btn-border);
+    border-radius: 999px;
+    background: var(--btn-bg);
     color: var(--text);
-    font-size: 20px;
     font-weight: 700;
-    letter-spacing: -0.01em;
     cursor: pointer;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .prs-repo:hover {
@@ -1472,6 +1504,7 @@ button:disabled {
 }
 
 .prs-count {
+    flex: none;
     color: var(--text-dim);
 }
 
@@ -1504,16 +1537,45 @@ button:disabled {
     padding-bottom: 24px;
 }
 
+.prs-lead,
 .prs-group {
-    max-width: 1080px;
+    max-width: 1040px;
     margin: 0 auto;
     padding: 0 24px;
 }
 
+/* The inbox leads with one pull request: the owl says how many wait, the card is the first. */
+.prs-lead h1 {
+    display: flex;
+    align-items: flex-end;
+    gap: 12px;
+    margin: 4px 0 14px;
+    font-family: var(--font-title);
+    font-size: 28px;
+    font-weight: 400;
+    line-height: 1.15;
+}
+
+.prs-lead .mascot {
+    flex: none;
+    width: 90px;
+    height: 66px;
+}
+
+/* Each group is named in the margin, so the rows read as one list. */
+.prs-group {
+    display: grid;
+    grid-template-columns: 140px minmax(0, 1fr);
+    gap: 12px;
+    margin-top: 22px;
+}
+
 .prs-group h2 {
-    margin: 24px 0 6px;
-    font-size: 14px;
-    font-weight: 600;
+    margin: 0;
+    padding-top: 11px;
+    font-family: var(--font-title);
+    font-size: 17px;
+    font-weight: 400;
     color: var(--text-dim);
 }
 
@@ -1521,21 +1583,17 @@ button:disabled {
     margin: 0;
     padding: 0;
     list-style: none;
-    border-top: 1px solid var(--border);
-}
-
-.prs-group li {
-    border-bottom: 1px solid var(--border);
 }
 
 .pr-row {
     display: grid;
-    grid-template-columns: 56px minmax(0, 1fr) 132px 150px;
+    grid-template-columns: 64px minmax(0, 1fr) 132px 150px;
     align-items: center;
     gap: 12px;
     width: 100%;
-    padding: 10px 8px 10px 0;
+    padding: 8px 12px;
     border: 0;
+    border-radius: 12px;
     background: none;
     color: var(--text);
     font: inherit;
@@ -1545,7 +1603,66 @@ button:disabled {
 
 .pr-row.selected {
     background: var(--bg-alt);
-    box-shadow: inset 2px 0 0 var(--accent);
+    box-shadow: inset 0 0 0 1.5px var(--btn-border);
+}
+
+/* The lead card: title on the first line, size, progress and the way in on the second.
+ * Its sun shadow shows while it is the selected row, so the arrow keys have somewhere to leave. */
+.pr-row.lead {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px 20px;
+    padding: 18px 20px;
+    border: 1.5px solid var(--text);
+    border-radius: 18px;
+    background: var(--bg-alt);
+    box-shadow: 6px 6px 0 var(--border);
+}
+
+.pr-row.lead.selected {
+    box-shadow: 6px 6px 0 var(--done);
+}
+
+.pr-row.lead .pr-num,
+.pr-row.lead .pr-name {
+    font-family: var(--font-title);
+    font-size: 24px;
+    font-weight: 400;
+    line-height: 1.2;
+}
+
+.pr-row.lead .pr-main {
+    flex: 1 1 60%;
+}
+
+.pr-row.lead .size {
+    flex-direction: row;
+    align-items: center;
+    gap: 10px;
+}
+
+.pr-row.lead .size-bars {
+    width: 64px;
+}
+
+.pr-go {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    margin-left: auto;
+    padding: 8px 16px;
+    border-radius: 12px;
+    background: var(--accent);
+    color: var(--on-accent);
+    font-weight: 700;
+}
+
+.pr-go .kbd,
+.dock .kbd {
+    border: 0;
+    background: #fff;
+    color: var(--night);
+    font-weight: 700;
 }
 
 .pr-row:focus-visible {
@@ -1556,7 +1673,6 @@ button:disabled {
 .pr-num {
     font-family: var(--font-mono);
     color: var(--cool);
-    text-align: right;
 }
 
 .pr-main {
@@ -1686,8 +1802,8 @@ button:disabled {
 
 .review-name {
     overflow: hidden;
-    font-size: 16px;
-    font-weight: 600;
+    font-family: var(--font-title);
+    font-size: 20px;
     white-space: nowrap;
     text-overflow: ellipsis;
 }
@@ -1719,8 +1835,7 @@ button:disabled {
     align-items: stretch;
     gap: 3px;
     height: var(--tick-height);
-    padding: 4px 12px 8px;
-    border-bottom: 1px solid var(--border);
+    padding: 2px 20px 12px;
 }
 
 .ruler-tick {
@@ -1729,7 +1844,7 @@ button:disabled {
     min-width: 2px;
     padding: 0;
     border: 0;
-    border-radius: 2px;
+    border-radius: 5px;
     background: var(--border);
     cursor: pointer;
     transition:
@@ -1751,13 +1866,9 @@ button:disabled {
     background: var(--del);
 }
 
-.ruler-tick.current::after {
-    content: "";
-    position: absolute;
-    inset: auto 0 -6px;
-    height: 2px;
-    border-radius: 1px;
-    background: var(--cool);
+.ruler-tick.current {
+    outline: 2px solid var(--text);
+    outline-offset: 1px;
 }
 
 .ruler-tick:focus-visible {
@@ -1798,12 +1909,6 @@ button:disabled {
     font-family: var(--font-ui);
 }
 
-.review-toggle[aria-pressed="true"] {
-    border-color: var(--done);
-    background: var(--done);
-    color: var(--on-done);
-}
-
 /* Whole PR | Since my review: two halves of one control, the shown range filled in. */
 .since-toggle {
     display: flex;
@@ -1832,12 +1937,6 @@ button:disabled {
     border-bottom: 1px solid var(--border);
     color: var(--warn-text);
     font-size: 13px;
-}
-
-.review-toggle[aria-pressed="true"] kbd {
-    border-color: var(--on-done);
-    background: transparent;
-    color: inherit;
 }
 
 .changed-tag {
@@ -2392,7 +2491,9 @@ button:disabled {
     flex: none;
     width: 380px;
     min-height: 0;
-    border-left: 1px solid var(--border);
+    overflow: hidden;
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius-lg);
     background: var(--bg-alt);
     animation: fade-in var(--t-base) var(--ease) both;
 }
@@ -2653,4 +2754,151 @@ button:disabled {
     font-family: var(--font-mono);
     font-size: 12px;
     white-space: pre-wrap;
+}
+
+/* The dock: the keys a review runs on, under the diff. Night on both colourways, like the
+ * "all reviewed" card. Sun marks the file reviewed, cherry finishes the review. */
+.dock {
+    display: flex;
+    flex: none;
+    align-items: center;
+    align-self: center;
+    gap: 4px;
+    max-width: calc(100% - 24px);
+    margin: 10px 0 12px;
+    padding: 6px;
+    overflow-x: auto;
+    border: 1.5px solid color-mix(in srgb, var(--on-night) 18%, var(--night));
+    border-radius: 18px;
+    background: var(--night);
+    color: var(--on-night);
+    box-shadow: 0 8px 24px var(--scrim);
+    white-space: nowrap;
+}
+
+.dock button {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    border: 0;
+    border-radius: 12px;
+    background: none;
+    color: inherit;
+    font: inherit;
+    font-size: 14px;
+    transition: background-color var(--t-fast) var(--ease);
+}
+
+.dock button:hover:not(:disabled) {
+    background: rgb(255 255 255 / 0.14);
+}
+
+.dock button:disabled {
+    opacity: 0.45;
+}
+
+.dock button:focus-visible {
+    outline-color: var(--done);
+}
+
+.dock .dock-mark {
+    box-shadow: inset 0 0 0 1.5px var(--done);
+    color: var(--done);
+    font-weight: 700;
+}
+
+.dock .dock-mark[aria-pressed="true"],
+.dock .dock-mark[aria-pressed="true"]:hover {
+    background: var(--done);
+    color: var(--on-done);
+}
+
+.dock .dock-finish {
+    background: var(--accent);
+    color: var(--on-accent);
+    font-weight: 700;
+}
+
+.dock .dock-finish:hover {
+    background: var(--accent-hover);
+}
+
+.dock-rule {
+    align-self: stretch;
+    width: 1px;
+    margin: 4px 6px;
+    background: rgb(255 255 255 / 0.25);
+}
+
+.dock-count {
+    min-width: 20px;
+    padding: 0 6px;
+    border-radius: 999px;
+    background: #fff;
+    color: var(--night);
+    font-size: 12px;
+    text-align: center;
+}
+
+/* Claude's note on the open file, beside its card. It is extra, so it shows only when the window has the room. */
+.file-brief {
+    display: none;
+    flex: none;
+    flex-direction: column;
+    gap: 6px;
+    width: 230px;
+    overflow-y: auto;
+}
+
+@media (min-width: 1360px) {
+    .file-brief {
+        display: flex;
+    }
+}
+
+.file-brief .mascot {
+    flex: none;
+    width: 90px;
+    height: 66px;
+}
+
+.file-brief-card {
+    padding: 12px 14px;
+    border-radius: var(--radius-lg);
+    background: var(--done-soft);
+    font-size: 14px;
+}
+
+.file-brief-card h2 {
+    margin: 0 0 2px;
+    font-family: var(--font-title);
+    font-size: 17px;
+    font-weight: 400;
+}
+
+.file-brief-card ul + h2 {
+    margin-top: 10px;
+}
+
+.file-brief-card p {
+    margin: 0;
+}
+
+.file-brief-more {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 10px;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--text-dim);
+    font: inherit;
+    font-size: 13px;
+}
+
+.file-brief-more:hover {
+    color: var(--text);
 }

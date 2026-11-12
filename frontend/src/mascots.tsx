@@ -74,6 +74,16 @@ export function Snail() {
     );
 }
 
+// Work is waiting: the owl is awake on its branch. Leads the inbox and sits beside the diff.
+export function OwlPerch() {
+    return (
+        <Art>
+            <path d="M5 95 H145" stroke="var(--m-acorn)" strokeWidth="6" strokeLinecap="round"/>
+            <g transform="translate(75 62)"><Owl eyes="open"/></g>
+        </Art>
+    );
+}
+
 // Nothing to review: the owl sits by an empty tray and blinks.
 export function OwlTray() {
     return (
