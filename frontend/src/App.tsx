@@ -2024,6 +2024,7 @@ function App() {
                                     onNote={text => updateNote(selected.path, text)}
                                     fullFile={fullFile || tempFull === selected.path}
                                     onToggleFullFile={() => (tempFull === selected.path ? setTempFull(null) : setFullFile(v => !v))}
+                                    place={placeOf(rulerFiles, selected)}
                                     jump={jump?.path === selected.path && diffPath === selected.path ? jump : null}
                                     onJumpOutside={showWholeFile}
                                     since={sinceFrom ? range.kind : null}
@@ -2064,7 +2065,12 @@ function App() {
                             />
                         )}
                         {shownBrief && selected && !claudePanel && (
-                            <FileBrief brief={shownBrief} path={selected.path} onShowBrief={() => setBriefOpen(true)}/>
+                            <FileBrief
+                                brief={shownBrief}
+                                path={selected.path}
+                                onJump={line => setJump({path: selected.path, side: 'RIGHT', line, id: Date.now()})}
+                                onShowBrief={() => setBriefOpen(true)}
+                            />
                         )}
                     </div>
                     <ReviewDock
@@ -2279,6 +2285,7 @@ function DiffPanel(props: {
     prFileURL: string;
     threads: PRThread[];
     onOpenURL: (url: string) => void;
+    place: string; // where the file sits in the review, as "3 of 18"; '' when it is not in the list
     jump: {side: Side; line: number; id: number} | null;
     onJumpOutside: () => void; // the jump line is not in this diff
     since: DiffRange['kind'] | null; // the range shown, when the file changed since your review
@@ -2315,6 +2322,7 @@ function DiffPanel(props: {
                     </div>
                     {file.oldPath && <div className="diff-old">renamed from {file.oldPath}</div>}
                 </div>
+                {props.place && <span className="diff-place" title="This file's place in the review">{props.place}</span>}
                 <span className="counts"><span className="added">+{file.added}</span> <span className="deleted">−{file.deleted}</span></span>
                 {props.since && (
                     <div className="since-toggle" role="group" aria-label="Diff range">
@@ -2814,6 +2822,12 @@ function ShortcutsSheet({onClose}: {onClose: () => void}) {
 // isTyping: the key went to a text box, so single-letter shortcuts stay out of its way.
 function isTyping(target: EventTarget | null): boolean {
     return target instanceof HTMLInputElement || target instanceof HTMLSelectElement || target instanceof HTMLTextAreaElement;
+}
+
+// placeOf says where a file sits among the review's files, as "3 of 18".
+function placeOf(files: FileChange[], file: FileChange): string {
+    const at = files.findIndex(f => f.path === file.path);
+    return at === -1 ? '' : `${at + 1} of ${files.length}`;
 }
 
 function parentOf(path: string) {

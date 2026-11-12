@@ -616,6 +616,13 @@ button:disabled {
     font-size: 13px;
 }
 
+.diff-place {
+    flex: none;
+    color: var(--text-dim);
+    font-size: 13px;
+    white-space: nowrap;
+}
+
 .diff-old {
     font-size: 13px;
     opacity: 0.6;
@@ -748,10 +755,6 @@ button:disabled {
     max-height: 76vh;
     display: flex;
     flex-direction: column;
-    background: var(--bg-alt);
-    border: 1.5px solid var(--text);
-    border-radius: 18px;
-    box-shadow: 6px 6px 0 var(--border);
     overflow: hidden;
 }
 
@@ -772,16 +775,6 @@ button:disabled {
 
 .picker-input {
     margin: 12px 16px 0;
-    padding: 10px 14px;
-    background: var(--bg);
-    color: inherit;
-    border: 1.5px solid var(--btn-border);
-    border-radius: 12px;
-    font-size: 17px;
-}
-
-.picker-input::placeholder {
-    color: var(--text-dim);
 }
 
 .picker-crumbs {
@@ -870,12 +863,6 @@ button:disabled {
     text-decoration: underline;
     text-decoration-thickness: 2px;
     text-underline-offset: 3px;
-}
-
-/* The active row wears the same ink ring as the open file in the tree. */
-.picker-item.active {
-    background: var(--bg-hover);
-    box-shadow: inset 0 0 0 1.5px var(--text);
 }
 
 .picker-folder {
@@ -990,46 +977,67 @@ button:disabled {
     background: var(--scrim);
 }
 
+/* Every dialog is the same sheet as the inbox's lead card: an ink outline, a wide corner, a flat shadow. */
+.quick,
+.picker,
+.shortcuts,
+.finish {
+    background: var(--bg-alt);
+    border: 1.5px solid var(--text);
+    border-radius: 18px;
+    box-shadow: 6px 6px 0 var(--border);
+}
+
 .quick {
-    width: min(620px, 92vw);
-    max-height: 60vh;
+    width: min(660px, 92vw);
+    max-height: 64vh;
     display: flex;
     flex-direction: column;
-    background: var(--bg-alt);
-    border: 1px solid var(--btn-border);
-    border-radius: var(--radius-lg);
     overflow: hidden;
 }
 
-.quick input {
-    margin: 10px;
-    padding: 6px 10px;
-    background: var(--btn-bg);
+/* The box a dialog is driven from: the palette's, the picker's, the search's. */
+.quick input,
+.picker-input {
+    padding: 10px 14px;
+    background: var(--bg);
     color: inherit;
-    border: 1px solid var(--btn-border);
-    border-radius: var(--radius);
-    font-family: var(--font-mono);
+    border: 1.5px solid var(--btn-border);
+    border-radius: 12px;
+    font-size: 17px;
+}
+
+.quick input::placeholder,
+.picker-input::placeholder {
+    color: var(--text-dim);
+}
+
+.quick input {
+    margin: 14px 14px 8px;
 }
 
 .quick ul {
     list-style: none;
     margin: 0;
-    padding: 0 4px 6px;
+    padding: 0 8px 8px;
     overflow: auto;
 }
 
 .quick li {
     display: flex;
+    align-items: center;
     gap: 8px;
-    padding: 4px 8px;
-    border-radius: var(--radius);
+    min-height: 34px;
+    padding: 4px 12px;
+    border-radius: 9px;
     cursor: pointer;
-    font-family: var(--font-mono);
 }
 
-.quick li.active {
+/* The active row wears the same ink ring as the open file in the tree. */
+.quick li.active,
+.picker-item.active {
     background: var(--bg-hover);
-    box-shadow: inset 2px 0 0 var(--accent);
+    box-shadow: inset 0 0 0 1.5px var(--text);
 }
 
 /* The editor replaces the diff pane while a file is being edited. */
@@ -1251,8 +1259,9 @@ button:disabled {
     padding: 4px;
     list-style: none;
     background: var(--bg-alt);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-lg);
+    border: 1.5px solid var(--text);
+    border-radius: 12px;
+    box-shadow: 4px 4px 0 var(--border);
 }
 
 .ctx-menu button {
@@ -1290,27 +1299,25 @@ button:disabled {
     width: min(460px, 92vw);
     max-height: 72vh;
     overflow: auto;
-    padding: 10px 16px 14px;
-    background: var(--bg-alt);
-    border: 1px solid var(--btn-border);
-    border-radius: var(--radius-lg);
+    padding: 14px 20px 18px;
 }
 
 .shortcuts-head {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-bottom: 6px;
+    margin-bottom: 8px;
     font-family: var(--font-title);
-    font-size: 16px;
-    font-weight: 500;
+    font-size: 22px;
+    font-weight: 400;
+    line-height: 1.2;
 }
 
 .shortcuts-group h3 {
-    margin: 12px 0 4px;
+    margin: 14px 0 4px;
     font-size: 13px;
-    font-weight: 600;
-    opacity: 0.6;
+    font-weight: 700;
+    color: var(--text-dim);
 }
 
 .shortcuts-group dl {
@@ -2350,11 +2357,8 @@ button:disabled {
 }
 
 .finish {
-    width: min(520px, 92vw);
-    padding: 10px 16px 14px;
-    background: var(--bg-alt);
-    border: 1px solid var(--btn-border);
-    border-radius: var(--radius-lg);
+    width: min(560px, 92vw);
+    padding: 14px 20px 18px;
     animation: rise-in var(--t-base) var(--ease) both;
 }
 
@@ -2368,9 +2372,9 @@ button:disabled {
     display: flex;
     align-items: center;
     gap: 6px;
-    padding: 4px 10px;
-    border: 1px solid var(--btn-border);
-    border-radius: var(--radius);
+    padding: 6px 12px;
+    border: 1.5px solid var(--btn-border);
+    border-radius: 12px;
     cursor: pointer;
 }
 

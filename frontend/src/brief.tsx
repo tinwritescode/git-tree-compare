@@ -30,10 +30,10 @@ export function BriefCard({state, since, open, onToggle, onOpenFile}: {
 }
 
 // FileBrief sits beside the diff: what the brief says about the open file, so the warning is in
-// view while the code is. The whole brief stays one key away.
-export function FileBrief({brief, path, onShowBrief}: {brief: Brief; path: string; onShowBrief: () => void}) {
+// view while the code is. A warning with a line goes to that line. The whole brief stays one key away.
+export function FileBrief({brief, path, onJump, onShowBrief}: {brief: Brief; path: string; onJump: (line: number) => void; onShowBrief: () => void}) {
     const {risks, untested} = fileBrief({brief, path});
-    const line = (n: number) => (n > 0 ? `Line ${n}: ` : '');
+    const at = (line: number) => line > 0 && <button type="button" className="brief-path" onClick={() => onJump(line)} title={`Go to line ${line}`}>Line {line}</button>;
     return (
         <aside className="file-brief" aria-label="Claude on this file">
             <OwlPerch/>
@@ -44,7 +44,7 @@ export function FileBrief({brief, path, onShowBrief}: {brief: Brief; path: strin
                         <h2>Slow down here</h2>
                         <ul className="brief-list">
                             {risks.map((r, i) => (
-                                <li key={i}><span className={`risk-dot risk-${r.level}`} title={`${LEVEL_LABEL[r.level]} risk`}>●</span>{line(r.line)}{r.why}</li>
+                                <li key={i}><span className={`risk-dot risk-${r.level}`} title={`${LEVEL_LABEL[r.level]} risk`}>●</span>{at(r.line)} {r.why}</li>
                             ))}
                         </ul>
                     </>
@@ -52,7 +52,7 @@ export function FileBrief({brief, path, onShowBrief}: {brief: Brief; path: strin
                 {untested.length > 0 && (
                     <>
                         <h2>No test covers</h2>
-                        <ul className="brief-list">{untested.map((u, i) => <li key={i}>{line(u.line)}{u.what}</li>)}</ul>
+                        <ul className="brief-list">{untested.map((u, i) => <li key={i}>{at(u.line)} {u.what}</li>)}</ul>
                     </>
                 )}
                 <button type="button" className="file-brief-more" onClick={onShowBrief}><Kbd>⇧B</Kbd> The whole brief</button>
