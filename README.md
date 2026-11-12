@@ -135,6 +135,7 @@ When [Claude Code](https://claude.com/claude-code) (`claude`) is installed, open
 - In the Finish sheet, **Draft summary with Claude** fills the summary from your draft comments and verdict, for you to edit. It never submits.
 - Claude reads a read-only checkout of the head commit, with only its Read, Grep and Glob tools (none for polish and summaries), and treats the pull request's text and diff as untrusted data. The checkout is removed when the review closes or the app quits. A brief, findings or an explanation is kept on this machine per commit and model, so opening the same head again costs nothing; **Re-run Claude brief** in `⌘K` writes the brief and findings again. A brief may spend up to $1, findings $2, the since-your-review read $0.50, an explanation $0.50, a question in Ask $1, a polish or summary $0.10, and a PR description $0.50.
 - In `⌘K`: **Claude model…** picks the model for each kind of Claude task (Opus 5.5 by default), and **No AI for this repository** turns Claude off for the repository you are in.
+- The **Claude on / off** switch in the top bar (or **Turn Claude off** in `⌘K`) turns Claude off everywhere, to spend nothing: running tasks stop and no brief, findings, Explain or Ask starts. It stays off after a restart. Turning it on while a review is open starts that review's brief.
 
 ### Open a pull request after reviewing your branch
 

@@ -4,13 +4,14 @@ import {inboxGroups, type InboxRow, type LocalWork, nextUp, rowKey} from './inbo
 import {basename, inkShare, tickWeight, timeAgo} from './util';
 import {Button} from './ui/button';
 import {Kbd} from './ui/kbd';
+import {ClaudeSwitch} from './claude-panel';
 import {OwlPerch, OwlTray, Snail} from './mascots';
 
 export type PR = main.PRInfo;
 
 // PRList is the home of a repository: every open pull request, the ones asking for this reviewer
 // first, and local work (the checked-out branch, recent commits) to review without one.
-export function PRList({repo, prs, local, loading, error, reviewedCount, active, onOpen, onRefresh, onChangeRepo, onCommands}: {
+export function PRList({repo, prs, local, loading, error, reviewedCount, active, onOpen, onRefresh, onChangeRepo, onCommands, claude}: {
     repo: string;
     prs: PR[];
     local: LocalWork | null;
@@ -22,6 +23,7 @@ export function PRList({repo, prs, local, loading, error, reviewedCount, active,
     onRefresh: () => void;
     onChangeRepo: () => void;
     onCommands: () => void; // opens the palette, which also reviews a commit or branch
+    claude: {on: boolean; onFlip: () => void} | null; // the Claude switch; null when claude is not installed
 }) {
     const [query, setQuery] = useState('');
     const [index, setIndex] = useState(0);
@@ -84,6 +86,7 @@ export function PRList({repo, prs, local, loading, error, reviewedCount, active,
                         setIndex(0);
                     }}
                 />
+                {claude && <ClaudeSwitch on={claude.on} onFlip={claude.onFlip}/>}
                 <Button onClick={onRefresh} disabled={loading} title="Refresh (r)">{loading ? 'Loading…' : 'Refresh'}</Button>
                 <Button onClick={onCommands} title="All commands, including reviewing a commit or branch">Commands <Kbd>⌘K</Kbd></Button>
             </header>

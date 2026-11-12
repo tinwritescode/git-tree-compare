@@ -1,8 +1,7 @@
 import {describe, expect, it} from 'vitest';
 import {
     briefChip, type BriefRun, briefRunStep, briefState, modelChoices, modelFor, parseBrief, parseClaudeEvent, parseClaudeModels, parsePRDescription, parseRepoList,
-    fileBrief, riskMarks,
-} from './claude';
+    fileBrief, riskMarks, flipClaude} from './claude';
 
 const paths = new Set(['limit.go', 'limit_test.go', 'server.go']);
 
@@ -175,5 +174,20 @@ describe('parsePRDescription', () => {
         expect(parsePRDescription({title: ' ', body: 'x'})).toBeNull();
         expect(parsePRDescription({body: 'x'})).toBeNull();
         expect(parsePRDescription('Add limits')).toBeNull();
+    });
+});
+
+describe('flipClaude', () => {
+    it('turns Claude off everywhere when it is on here', () => {
+        expect(flipClaude({off: false, excluded: ['/other'], repo: '/here'})).toEqual({off: true, excluded: ['/other']});
+    });
+
+    it('turns Claude back on', () => {
+        expect(flipClaude({off: true, excluded: [], repo: '/here'})).toEqual({off: false, excluded: []});
+    });
+
+    it('turns Claude on here when only this repository had it off', () => {
+        expect(flipClaude({off: false, excluded: ['/here', '/other'], repo: '/here'})).toEqual({off: false, excluded: ['/other']});
+        expect(flipClaude({off: true, excluded: ['/here'], repo: '/here'})).toEqual({off: false, excluded: []});
     });
 });

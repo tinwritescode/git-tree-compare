@@ -101,3 +101,21 @@ function AskBox({initial, busy, onSend, onClose}: {initial: string; busy: boolea
         </div>
     );
 }
+
+// ClaudeSwitch turns Claude on or off. Off, no task runs, so nothing is spent.
+export function ClaudeSwitch({on, onFlip}: {on: boolean; onFlip: () => void}) {
+    return (
+        <button
+            type="button"
+            role="switch"
+            aria-checked={on}
+            className="claude-switch"
+            onClick={onFlip}
+            title={on
+                ? 'Claude writes a brief and looks for findings when a review opens. Turn it off to spend nothing.'
+                : 'Claude is off: no brief, findings, Explain or Ask. Turning it on starts a brief for the open review.'}
+        >
+            <span className="claude-switch-knob" aria-hidden="true"/>Claude {on ? 'on' : 'off'}
+        </button>
+    );
+}

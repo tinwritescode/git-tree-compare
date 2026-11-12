@@ -198,6 +198,17 @@ export function parsePRDescription(value: unknown): PRDescription | null {
     return title ? {title, body: str(value.body) ?? ''} : null;
 }
 
+// flipClaude is the header switch. With Claude on here, it turns Claude off everywhere, so no task
+// runs anywhere. Otherwise it turns Claude on here: everywhere, and for this repository if it was excluded.
+export function flipClaude({off, excluded, repo}: {
+    off: boolean; // Claude is off everywhere
+    excluded: string[]; // repositories with Claude off
+    repo: string;
+}): {off: boolean; excluded: string[]} {
+    const on = !off && !excluded.includes(repo);
+    return on ? {off: true, excluded} : {off: false, excluded: excluded.filter(r => r !== repo)};
+}
+
 // parseRepoList reads a saved list of repository paths.
 export function parseRepoList(value: unknown): string[] {
     return Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string') : [];

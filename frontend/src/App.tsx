@@ -47,14 +47,14 @@ import {BriefCard, FileBrief, type SinceNote} from './brief';
 import {ReviewDock} from './dock';
 import {
     briefChip, type BriefRun, briefRunStep, briefState, CLAUDE_TASKS, type ClaudeEvent, type ClaudeModels, type ClaudeTaskKind, modelChoices, modelFor,
-    parseClaudeEvent, parseClaudeModels, parsePRDescription, parseRepoList, type PRDescription, type RiskMark, riskMarks, TASK_LABEL,
+    parseClaudeEvent, parseClaudeModels, parsePRDescription, flipClaude, parseRepoList, type PRDescription, type RiskMark, riskMarks, TASK_LABEL,
 } from './claude';
 import {FindingCard, type FindingControls, ThreadCheckView} from './claude-review';
 import {acceptFinding, type Commentable, type Finding, nextFinding, parseFindings, parseSettled, shownFindings, whyQuestion} from './findings';
 import {parseRereview, sinceRanges, type ThreadCheck, threadTexts} from './rereview';
 import {type PushCheck} from './selfreview';
 import {askKey, askTurn, type Conversation, conversationStep, emptyConversation, startTurn, type Turn, turnStep} from './claude-chat';
-import {ClaudePanel} from './claude-panel';
+import {ClaudePanel, ClaudeSwitch} from './claude-panel';
 import {diffRows, type DiffRow, hunkFor, hunkOfRow, parseDiff, type Line, type SplitRow} from './diff';
 import {highlight} from './highlight';
 import {emptyQuery, SearchDialog, type SearchHit, type SearchQuery} from './search-dialog';
@@ -97,6 +97,7 @@ const RECENT_KEY = 'git-tree-compare:recent';
 const RECENT_LIMIT = 8;
 const TREE_VIEW_KEY = 'git-tree-compare:treeView';
 const NO_AI_KEY = 'git-tree-compare:noAI'; // repositories the user turned AI off for
+const CLAUDE_OFF_KEY = 'git-tree-compare:claudeOff'; // true while Claude is switched off everywhere
 const CLAUDE_MODELS_KEY = 'git-tree-compare:claudeModels'; // the model per kind of Claude task
 
 function readStore<T>(key: string, fallback: T): T {
@@ -236,6 +237,7 @@ function App() {
     const [paletteMode, setPaletteMode] = useState<'commands' | 'model'>('commands'); // ⌘K lists commands, or Claude models
     const [claudeInfo, setClaudeInfo] = useState<main.ClaudeInfo | null>(null); // null until known, and AI stays hidden
     const [noAIRepos, setNoAIRepos] = useState<string[]>(() => parseRepoList(readStore<unknown>(NO_AI_KEY, [])));
+    const [claudeOff, setClaudeOff] = useState(() => readStore<unknown>(CLAUDE_OFF_KEY, false) === true);
     const [claudeModels, setClaudeModels] = useState<ClaudeModels>(() => parseClaudeModels(readStore<unknown>(CLAUDE_MODELS_KEY, {})));
     const [briefRun, setBriefRun] = useState<BriefRun>({kind: 'off'});
     const [briefOpen, setBriefOpen] = useState(true);
@@ -290,7 +292,7 @@ function App() {
     const tree = useMemo(() => buildTree(visibleChanges, sort), [visibleChanges, sort]);
     const treeView = subject ? treeViews[subject.kind] : 'folders';
     // Claude runs when it is installed and not turned off here. The brief is for pull requests and branches.
-    const aiOn = !!claudeInfo?.installed && !noAIRepos.includes(repo);
+    const aiOn = !!claudeInfo?.installed && !claudeOff && !noAIRepos.includes(repo);
     const briefModel = modelFor({models: claudeModels, kind: 'brief', fallback: claudeInfo?.defaultModel ?? ''});
     const findingsModel = modelFor({models: claudeModels, kind: 'findings', fallback: claudeInfo?.defaultModel ?? ''});
     const rereviewModel = modelFor({models: claudeModels, kind: 'rereview', fallback: claudeInfo?.defaultModel ?? ''});
@@ -1060,6 +1062,7 @@ function App() {
     useEffect(() => writeStore('git-tree-compare:ignoreWS', ignoreWS), [ignoreWS]);
     useEffect(() => writeStore(TREE_VIEW_KEY, treeViews), [treeViews]);
     useEffect(() => writeStore(NO_AI_KEY, noAIRepos), [noAIRepos]);
+    useEffect(() => writeStore(CLAUDE_OFF_KEY, claudeOff), [claudeOff]);
     useEffect(() => writeStore(CLAUDE_MODELS_KEY, claudeModels), [claudeModels]);
 
     useEffect(() => {
@@ -1440,6 +1443,15 @@ function App() {
         setNoAIRepos(list => (list.includes(repo) ? list.filter(r => r !== repo) : [...list, repo]));
     }
 
+    // The header switch. Off stops what is running and starts nothing more, anywhere, so nothing is spent.
+    function toggleClaude() {
+        const next = flipClaude({off: claudeOff, excluded: noAIRepos, repo});
+        if (next.off) closeClaudePanel();
+        setClaudeOff(next.off);
+        setNoAIRepos(next.excluded);
+        showFlash(next.off ? 'Claude is off. Nothing runs, and nothing is spent, until you turn it on.' : 'Claude is on.');
+    }
+
     // changeRef names the change under review for a Claude task, with the model chosen for its kind.
     function changeRef({kind, commits, fresh}: {kind: ClaudeTaskKind; commits: {base: string; head: string}; fresh: boolean}): main.ChangeRef {
         return main.ChangeRef.createFrom({
@@ -1682,6 +1694,7 @@ function App() {
             setPaletteMode('model');
             setPaletteOpen(true);
         }}] : []),
+        ...(claudeInfo?.installed ? [{id: 'claude', label: aiOn ? 'Turn Claude off' : 'Turn Claude on', run: toggleClaude}] : []),
         ...(claudeInfo?.installed && repo ? [{
             id: 'noai', label: noAIRepos.includes(repo) ? 'Use AI for this repository' : 'No AI for this repository', run: toggleNoAI,
         }] : []),
@@ -1826,6 +1839,7 @@ function App() {
                     onRefresh={() => setPollTick(t => t + 1)}
                     onChangeRepo={chooseRepo}
                     onCommands={() => setPaletteOpen(true)}
+                    claude={claudeInfo?.installed ? {on: aiOn, onFlip: toggleClaude} : null}
                 />
             )}
 
@@ -1856,6 +1870,7 @@ function App() {
                                 {unsynced.size} not on GitHub yet, retrying
                             </span>
                         )}
+                        {claudeInfo?.installed && <ClaudeSwitch on={aiOn} onFlip={toggleClaude}/>}
                         {briefChip(brief) && (
                             <button
                                 type="button"

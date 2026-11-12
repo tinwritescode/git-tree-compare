@@ -2421,6 +2421,57 @@ button:disabled {
     cursor: pointer;
 }
 
+/* The Claude switch: periwinkle while Claude may run, quiet while it is off. */
+.claude-switch {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 10px 2px 4px;
+    border: 1px solid var(--btn-border);
+    border-radius: 999px;
+    background: none;
+    color: var(--text-dim);
+    font: inherit;
+    font-size: 13px;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.claude-switch-knob {
+    position: relative;
+    width: 24px;
+    height: 14px;
+    border-radius: 999px;
+    background: var(--btn-border);
+    transition: background-color var(--t-fast) var(--ease);
+}
+
+.claude-switch-knob::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--bg-alt);
+    transition: transform var(--t-fast) var(--ease);
+}
+
+.claude-switch[aria-checked="true"] {
+    border-color: var(--cool);
+    color: var(--cool);
+}
+
+.claude-switch[aria-checked="true"] .claude-switch-knob {
+    background: var(--cool);
+}
+
+.claude-switch[aria-checked="true"] .claude-switch-knob::after {
+    transform: translateX(10px);
+}
+
 .claude-chip.running {
     animation: fade-in var(--t-slow) var(--ease) infinite alternate;
 }
