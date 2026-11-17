@@ -544,6 +544,13 @@ fn main() {
                     on_url(&url_handle, url.as_str());
                 }
             });
+            // macOS hands over the link that started the app before this setup runs, so the
+            // listener above misses it; the plugin keeps it.
+            if let Ok(Some(urls)) = app.deep_link().get_current() {
+                for url in urls {
+                    on_url(&handle, url.as_str());
+                }
+            }
             std::thread::spawn(cli_install::refresh_installed_cli);
             if !launch.path.is_empty() {
                 request_open(&handle, &launch);
