@@ -729,8 +729,12 @@ function App() {
             openLocal(launch.review);
             return;
         }
-        closeReview();
-        setSubject({kind: 'pr', number: launch.number});
+        // The pull request already open stays as it is: closing it would drop its fetched commits, and
+        // reopening the same number would not fetch them again. The check runs again on the queued state,
+        // as a switch of repository above has closed the review this render still shows.
+        const isLaunched = (s: Subject | null) => s?.kind === 'pr' && s.number === launch.number;
+        if (!isLaunched(subject)) closeReview();
+        setSubject(s => (isLaunched(s) ? s : {kind: 'pr', number: launch.number}));
     }, [launch]);
 
     function openLocal(review: main.LocalReview) {
