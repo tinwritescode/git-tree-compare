@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "test": "vitest run"
+    "test": "vitest run",
+    "tauri": "TAURI_APP_PATH=../src-tauri TAURI_FRONTEND_PATH=. tauri"
   },
   "dependencies": {
     "@fontsource/andika": "^5.3.0",
@@ -16,6 +17,7 @@
     "@fontsource/itim": "^5.3.0",
     "@heroui/styles": "^3.2.7",
     "@tanstack/react-virtual": "^3.14.25",
+    "@tauri-apps/api": "^2.12.5",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/xterm": "^6.0.0",
     "clsx": "^2.1.1",
@@ -27,6 +29,7 @@
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.3",
+    "@tauri-apps/cli": "^2.12.5",
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.1.0",
     "@vitejs/plugin-react": "^5.0.0",

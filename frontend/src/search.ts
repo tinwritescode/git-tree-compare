@@ -1,4 +1,4 @@
-// Shaping search results for the search dialog. The search itself runs in Go (search.go).
+// Shaping search results for the search dialog. The search itself runs in Rust (src-tauri/src/search.rs).
 
 import type {main} from '../wailsjs/go/models';
 

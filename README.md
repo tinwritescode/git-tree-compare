@@ -182,22 +182,22 @@ Press `?` in the app to see this list.
 
 ## Build from source
 
-Requires Go, Node.js, and the [Wails v2](https://wails.io) CLI.
+Requires Rust, Node.js, and the Xcode command line tools.
 
 ```bash
-cd frontend && npm install && cd ..
-wails build
+cd frontend && npm install
+npx tauri build
 ```
 
-The app is written to `build/bin/git-tree-compare.app`. Run the tests with `go test ./...` and, in `frontend`, `npm test`.
+`tauri build` runs from `frontend`, where the Tauri CLI is installed, and finds the app in `../src-tauri`. The app is written to `src-tauri/target/release/bundle/macos/git-tree-compare.app`. Run the tests with `cargo test` in `src-tauri` and `npm test` in `frontend`. `npx tauri dev` runs the app with the frontend reloading as you edit.
 
 ### Publish a release
 
-Bump `appVersion` in `updates.go` and `productVersion` in `wails.json` to the same version, then build:
+Bump `version` in `src-tauri/Cargo.toml`, which is the only place the version is set, then build:
 
 ```bash
-wails build
-cd build/bin
+cd frontend && npx tauri build
+cd ../src-tauri/target/release/bundle/macos
 ditto -c -k --keepParent git-tree-compare.app git-tree-compare-macos.zip
 shasum -a 256 git-tree-compare-macos.zip > git-tree-compare-macos.zip.sha256
 ```

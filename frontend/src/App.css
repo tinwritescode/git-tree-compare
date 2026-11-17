@@ -333,7 +333,7 @@ button:disabled {
     background: var(--bg-alt);
     border-bottom: 1px solid var(--border);
     /* The bar is the window's drag handle. Its controls opt out below. */
-    --wails-draggable: drag;
+    --window-drag: drag;
     user-select: none;
 }
 
@@ -341,7 +341,7 @@ button:disabled {
 .toolbar input,
 .toolbar select,
 .toolbar label {
-    --wails-draggable: no-drag;
+    --window-drag: no-drag;
 }
 
 /* The one display moment: the repo name is set in a serif, the rest is UI type. */
@@ -1509,7 +1509,7 @@ button:disabled {
 
 .prs-head,
 .review-bar {
-    --wails-draggable: drag;
+    --window-drag: drag;
     display: flex;
     align-items: center;
     gap: 12px;
@@ -1528,7 +1528,7 @@ button:disabled {
 .prs-head button,
 .prs-head input,
 .review-bar button {
-    --wails-draggable: no-drag;
+    --window-drag: no-drag;
 }
 
 .prs-repo {

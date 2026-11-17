@@ -1,3 +1,4 @@
+// The shapes the backend sends and takes, kept in step with the Rust types in src-tauri by hand.
 export namespace main {
 	
 	export class ChangeRef {
