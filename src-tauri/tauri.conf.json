@@ -24,7 +24,6 @@
         "maximized": true,
         "titleBarStyle": "Overlay",
         "hiddenTitle": true,
-        "zoomHotkeysEnabled": true,
         "backgroundColor": [
           27,
           38,

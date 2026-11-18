@@ -3,8 +3,10 @@ import {createRoot} from 'react-dom/client'
 import App from './App'
 import {migrateLegacyStorage} from './legacy-storage'
 import {enableWindowDrag} from '../wailsjs/runtime/runtime'
+import {enableZoomKeys} from './zoom'
 
 enableWindowDrag()
+enableZoomKeys()
 // Before the app reads its saved state.
 await migrateLegacyStorage()
 
