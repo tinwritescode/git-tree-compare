@@ -1169,7 +1169,7 @@ function App() {
                 return;
             }
             if (e.key === 'r') {
-                setPollTick(t => t + 1);
+                refresh();
                 return;
             }
             if (e.key === 't') {
@@ -1306,6 +1306,13 @@ function App() {
             return;
         }
         setCommentsOpen(true);
+        loadComments();
+    }
+
+    // Checks GitHub again: the pull request list, where a new head fetches the diff again, and the open
+    // pull request's comments.
+    function refresh() {
+        setPollTick(t => t + 1);
         loadComments();
     }
 
@@ -1702,7 +1709,7 @@ function App() {
         ...(claudeInfo?.installed && repo ? [{
             id: 'noai', label: noAIRepos.includes(repo) ? 'Use AI for this repository' : 'No AI for this repository', run: toggleNoAI,
         }] : []),
-        {id: 'refresh', label: 'Refresh', hint: 'r', run: () => setPollTick(t => t + 1)},
+        {id: 'refresh', label: 'Refresh', hint: 'r', run: refresh},
         {id: 'terminal', label: termOpen ? 'Hide terminal' : 'Show terminal', hint: '⌃`', run: () => setTermOpen(v => !v)},
         {id: 'repo', label: 'Open another repository', run: chooseRepo},
         {id: 'commit', label: 'Review a commit…', run: () => setRefMode('commit')},
@@ -1905,6 +1912,11 @@ function App() {
                         {pr && (
                             <Button onClick={toggleComments} aria-pressed={commentsOpen} title="Review comments (⇧C)">
                                 Comments{unresolvedCount > 0 ? ` ${unresolvedCount}` : ''}
+                            </Button>
+                        )}
+                        {pr && (
+                            <Button onClick={refresh} disabled={prsLoading} title="Check GitHub for new commits and comments (r)">
+                                {prsLoading ? 'Refreshing…' : 'Refresh'} <Kbd>r</Kbd>
                             </Button>
                         )}
                         <Button onClick={() => setPaletteOpen(true)} title="All commands">Commands <Kbd>⌘K</Kbd></Button>
